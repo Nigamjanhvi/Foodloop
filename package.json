@@ -1,0 +1,14 @@
+{
+  "name": "foodloop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Community surplus food rescue platform",
+  "workspaces": ["frontend", "backend"],
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c green,blue \"npm run dev --workspace backend\" \"npm run dev --workspace frontend\"",
+    "build": "npm run build --workspace frontend && npm run build --workspace backend",
+    "start": "npm run start --workspace backend",
+    "db:migrate": "npm run db:migrate --workspace backend"
+  },
+  "devDependencies": { "concurrently": "^9.2.1" }
+}
