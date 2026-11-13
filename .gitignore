@@ -9,3 +9,4 @@ coverage/
 *.tfstate.*
 *.pem
 *.log
+*.tsbuildinfo

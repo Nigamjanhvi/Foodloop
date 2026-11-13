@@ -1,7 +1,11 @@
-import { ArrowRight, HeartHandshake, MapPin, Recycle } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { ArrowRight, HeartHandshake, Leaf, MapPin, Recycle } from 'lucide-react';
+import { Link, Navigate, Route, Routes } from 'react-router-dom';
+import { AuthProvider, useAuth } from './auth/AuthContext';
+import { LoginPage, RegisterPage } from './auth/AuthPages';
+import { RequireAuth } from './auth/RequireAuth';
+import { DashboardFrame, DonorDashboard, NgoDashboard, VolunteerDashboard, AdminDashboard } from './dashboard/Dashboard';
 
-export default function App() {
+function LandingPage() {
   return <main className="page-shell">
     <header className="topbar"><Link className="brand" to="/"><span className="brand-mark"><Recycle size={20} /></span>foodloop</Link><nav><a href="#how-it-works">How it works</a><a href="#mission">Our mission</a></nav><div className="top-actions"><Link to="/login">Log in</Link><Link className="button button-small" to="/register">Join FoodLoop <ArrowRight size={15} /></Link></div></header>
     <section className="hero"><div className="hero-copy"><div className="eyebrow"><span /> A little less waste. A lot more good.</div><h1>Good food deserves<br />a <em>good next chapter.</em></h1><p>FoodLoop brings local food donors and community organizations together, so fresh surplus food reaches the people who need it.</p><div className="hero-actions"><Link className="button" to="/register">Get started <ArrowRight size={17} /></Link><a className="text-link" href="#how-it-works">See how it works <span>↓</span></a></div><div className="local-note"><MapPin size={16} /> Starting with communities around Phagwara</div></div><div className="hero-art"><div className="art-photo" role="img" aria-label="Fresh vegetables and bread ready to be shared"><div className="photo-shade" /><div className="photo-label"><span className="label-icon"><HeartHandshake size={18} /></span><span><strong>Food finds its way</strong><small>One local connection at a time</small></span></div></div><div className="floating-note"><span className="note-spark">✳</span><span><strong>Keep good food moving</strong><small>Share a little. Change a lot.</small></span></div></div></section>
@@ -9,4 +13,27 @@ export default function App() {
     <section className="mission" id="mission"><span className="mission-icon"><HeartHandshake size={22} /></span><div><span className="eyebrow">A community effort</span><h2>Better together, from the very first meal.</h2></div><p>FoodLoop is being built to make local food rescue simpler, more visible, and easier to trust. Join the community shaping it.</p><Link to="/register" aria-label="Join FoodLoop"><ArrowRight /></Link></section>
     <footer><Link className="brand" to="/"><span className="brand-mark"><Recycle size={18} /></span>foodloop</Link><span>Food finds its way.</span><span>© {new Date().getFullYear()} FoodLoop</span></footer>
   </main>;
+}
+
+function DashboardRedirect() {
+  const { user } = useAuth();
+  return <Navigate replace to={`/dashboard/${user!.role}`} />;
+}
+
+export default function App() {
+  return <AuthProvider><Routes>
+    <Route path="/" element={<LandingPage />} />
+    <Route path="/login" element={<LoginPage />} />
+    <Route path="/register" element={<RegisterPage />} />
+    <Route element={<RequireAuth />}>
+      <Route path="/dashboard" element={<DashboardRedirect />} />
+      <Route element={<DashboardFrame />}>
+        <Route path="/dashboard/donor" element={<RequireAuth roles={['donor']} />}><Route index element={<DonorDashboard />} /></Route>
+        <Route path="/dashboard/ngo" element={<RequireAuth roles={['ngo']} />}><Route index element={<NgoDashboard />} /></Route>
+        <Route path="/dashboard/volunteer" element={<RequireAuth roles={['volunteer']} />}><Route index element={<VolunteerDashboard />} /></Route>
+        <Route path="/dashboard/admin" element={<RequireAuth roles={['admin']} />}><Route index element={<AdminDashboard />} /></Route>
+      </Route>
+    </Route>
+    <Route path="*" element={<main className="not-found"><div className="not-found-icon"><Leaf /></div><span className="eyebrow">404 · PAGE NOT FOUND</span><h1>This page hasn’t arrived yet.</h1><p>Let’s get you back to the FoodLoop community.</p><Link className="button" to="/">Back to home <ArrowRight size={16} /></Link></main>} />
+  </Routes></AuthProvider>;
 }

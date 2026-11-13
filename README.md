@@ -1,6 +1,6 @@
 # FoodLoop
 
-FoodLoop is a community food rescue platform that helps local food donors connect surplus meals with nearby recipient organizations and volunteers. It is being developed as a phased full stack and DevOps project. This repository is currently at the Phase 1 foundation: the public web shell, API/database connection, and initial relational schema are present; later workflow and deployment phases are not yet implemented.
+FoodLoop is a community food rescue platform that helps local food donors connect surplus meals with nearby recipient organizations and volunteers. It is being developed as a phased full stack and DevOps project. The repository currently includes the Phase 1 foundation and Phase 2 account, role, organization registration, and verification workflows. Donation, reservation, volunteer task, notification, and DevOps workflows remain planned.
 
 ## Architecture
 
@@ -26,6 +26,7 @@ The browser talks only to the Express REST API. PostgreSQL is the system of reco
 frontend/                 React, Vite, TypeScript, responsive UI
 backend/                  Express API, PostgreSQL pool, migrations runner
 database/migrations/      Versioned SQL schema
+backend/test/             Isolated PostgreSQL authentication/authorization integration tests
 docker-compose.yml        Local PostgreSQL development service
 terraform/                AWS network and service provisioning (planned)
 puppet/                   Host configuration management (planned)
@@ -44,28 +45,48 @@ docs/                     API, architecture, deployment, and project report (pla
 
 Requirements: Node.js 22 or newer, npm, and Docker Desktop with Docker Compose.
 
-1. Copy `.env.example` to `.env` and set a local `DATABASE_URL` if needed. The included values are development-only and must not be used in production.
+1. Copy `.env.example` to `.env`, set a local `DATABASE_URL`, and set `JWT_SECRET` to a random secret of at least 32 bytes. For example, generate one with `node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"`. The included database values are development-only and must not be used in production.
 2. Start PostgreSQL with `docker compose up -d postgres`.
 3. Install workspace dependencies with `npm install`.
-4. Apply the schema with `npm run db:migrate`.
+4. Apply all new migrations with `npm run db:migrate`. The migration ledger skips files already applied; the initial migration is safe to re-run against its existing tables and does not delete data.
 5. Start the API and web client with `npm run dev`.
 6. Open `http://localhost:5173`; API health is at `http://localhost:4000/api/health`.
+7. Run the backend integration tests with `npm run test`. Tests create a random temporary PostgreSQL schema, run migrations there, and drop that schema at completion. They do not clear the app's existing tables.
 
 Compose initializes the schema on a new database volume as well. The migration runner is safe to re-run for the current idempotent initial migration. The backend returns HTTP 503 from health when PostgreSQL is unavailable.
 
-## Initial API surface
+## Authentication and organization API
 
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/health` | API process and PostgreSQL health |
 | GET | `/api/v1` | API version discovery |
+| POST | `/api/v1/auth/register` | Register donor, NGO, or volunteer account; organization/profile creation is transactional |
+| POST | `/api/v1/auth/login` | Verify bcrypt password and issue an expiring signed JWT |
+| GET | `/api/v1/auth/me` | Return the current active user from the database (Bearer token required) |
+| POST | `/api/v1/organizations` | Register a donor or recipient organization for a signed-in account |
+| GET | `/api/v1/organizations/me` | Read the signed-in organization's verification and service area details |
+| GET | `/api/v1/admin/organizations?status=pending` | Admin-only verification queue from PostgreSQL |
+| PATCH | `/api/v1/admin/organizations/:id/verification` | Admin-only verified/rejected decision with reviewer, timestamp, and optional note |
 
-Authentication and application resource endpoints will be added in their scheduled phases; the current UI is a public landing shell and does not imply those workflows are live.
+Successful responses use a `data` envelope; errors use an `error` envelope with a stable code, message, and optional validation details. Registration excludes the admin role. Create the first administrator only through the protected local seed command; there is no public admin registration endpoint.
+
+### Admin bootstrap
+
+Set `ADMIN_EMAIL`, `ADMIN_FULL_NAME`, and a unique `ADMIN_PASSWORD` (at least 16 characters) in the shell environment, then run `npm run db:seed-admin`. The script hashes the password with bcrypt and refuses to promote or overwrite an account with that email. Do not commit these values.
+
+### Frontend routes
+
+- `/` — public landing page
+- `/login`, `/register` — API-connected account forms
+- `/dashboard` — redirects to the signed-in user's role dashboard
+- `/dashboard/donor`, `/dashboard/ngo`, `/dashboard/volunteer`, `/dashboard/admin` — protected by session and role
+- The admin dashboard loads and updates real pending organization records. Donor/NGO and volunteer dashboards identify the account and currently available workflow status without displaying invented activity metrics.
 
 ## Planned implementation phases
 
-1. Repository, React, Express, and PostgreSQL foundation (in progress)
-2. Authentication, roles, and organization management
+1. Repository, React, Express, and PostgreSQL foundation (complete)
+2. Authentication, roles, and organization management (complete; see remaining issues)
 3. Donations, locality matching, and concurrency-safe reservations
 4. Volunteer assignment, OTP, and delivery tracking
 5. Email worker, retry handling, and analytics
