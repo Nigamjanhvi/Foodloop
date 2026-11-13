@@ -6,6 +6,7 @@ export type UserRole = 'donor' | 'ngo' | 'volunteer' | 'admin';
 export interface CurrentUser {
   id: string;
   email: string;
+  phone: string | null;
   fullName: string;
   role: UserRole;
   organizationId?: string;
@@ -17,7 +18,8 @@ export interface CurrentUser {
 interface AuthContextValue {
   user: CurrentUser | null;
   loading: boolean;
-  login(email: string, password: string): Promise<void>;
+  login(email: string, phone: string, password: string): Promise<void>;
+  enrollPhone(email: string, phone: string, password: string): Promise<void>;
   register(payload: Record<string, unknown>): Promise<void>;
   logout(): void;
 }
@@ -37,16 +39,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  async function login(email: string, password: string) {
-    const { data } = await api.post<{ data: { token: string; user: CurrentUser } }>('/auth/login', { email, password });
-    sessionStorage.setItem('foodloop.accessToken', data.data.token);
-    setUser(data.data.user);
+  function acceptSession(data: { token: string; user: CurrentUser }) {
+    sessionStorage.setItem('foodloop.accessToken', data.token);
+    setUser(data.user);
+  }
+
+  async function login(email: string, phone: string, password: string) {
+    const { data } = await api.post<{ data: { token: string; user: CurrentUser } }>('/auth/login', { email, phone, password });
+    acceptSession(data.data);
+  }
+
+  async function enrollPhone(email: string, phone: string, password: string) {
+    const { data } = await api.post<{ data: { token: string; user: CurrentUser } }>('/auth/enroll-phone', { email, phone, password });
+    acceptSession(data.data);
   }
 
   async function register(payload: Record<string, unknown>) {
     const { data } = await api.post<{ data: { token: string; user: CurrentUser } }>('/auth/register', payload);
-    sessionStorage.setItem('foodloop.accessToken', data.data.token);
-    setUser(data.data.user);
+    acceptSession(data.data);
   }
 
   function logout() {
@@ -54,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }
 
-  const value = useMemo(() => ({ user, loading, login, register, logout }), [user, loading]);
+  const value = useMemo(() => ({ user, loading, login, enrollPhone, register, logout }), [user, loading]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
@@ -71,4 +81,8 @@ export function errorMessage(error: unknown) {
     return error.response?.data?.error?.message ?? 'We could not reach FoodLoop. Check your connection and try again.';
   }
   return 'Something went wrong. Please try again.';
+}
+
+export function errorCode(error: unknown) {
+  return axios.isAxiosError<ApiErrorBody>(error) ? error.response?.data?.error?.code : undefined;
 }

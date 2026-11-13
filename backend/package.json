@@ -9,7 +9,7 @@
     "start": "node dist/server.js",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed-admin": "tsx src/db/seed-admin.ts",
-    "test": "tsx --test test/auth.test.ts"
+    "test": "tsx --test test/auth.test.ts test/dashboard-status.test.ts"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

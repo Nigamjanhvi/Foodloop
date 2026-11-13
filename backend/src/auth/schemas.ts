@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const phoneSchema = z.string().trim().min(7).max(20).optional();
+export const phoneSchema = z.string().trim().regex(/^\+[1-9]\d{7,14}$/, 'Enter a valid phone number with country code, such as +911234567890.');
 const locationSchema = z.object({
   city: z.string().trim().min(2).max(100),
   locality: z.string().trim().min(2).max(120),
@@ -35,8 +35,11 @@ export const registerSchema = z.object({
 
 export const loginSchema = z.object({
   email: z.string().trim().email().max(254),
+  phone: phoneSchema,
   password: z.string().min(1).max(128),
 });
+
+export const phoneEnrollmentSchema = loginSchema;
 
 export const verificationSchema = z.object({
   status: z.enum(['verified', 'rejected']),

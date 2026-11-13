@@ -5,6 +5,7 @@ export type UserRole = 'donor' | 'ngo' | 'volunteer' | 'admin';
 export interface AuthUser {
   id: string;
   email: string;
+  phone: string | null;
   fullName: string;
   role: UserRole;
   organizationId?: string;

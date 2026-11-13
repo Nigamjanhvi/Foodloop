@@ -17,7 +17,7 @@ export function createAuthenticate(pool: Pool, secret: string) {
       if (typeof payload === 'string' || !payload.sub) throw new Error('Invalid token subject');
 
       const result = await pool.query(
-        `SELECT u.id, u.email, u.full_name, u.role,
+        `SELECT u.id, u.email, u.phone, u.phone_e164, u.full_name, u.role,
                 o.id AS organization_id, o.name AS organization_name,
                 o.verification_status, o.verification_note
          FROM users u
@@ -31,6 +31,7 @@ export function createAuthenticate(pool: Pool, secret: string) {
       request.auth = {
         id: row.id,
         email: row.email,
+        phone: row.phone_e164 ?? row.phone,
         fullName: row.full_name,
         role: row.role as UserRole,
         ...(row.organization_id ? {

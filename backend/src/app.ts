@@ -3,11 +3,25 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import type { Pool } from 'pg';
-import { ZodError } from 'zod';
+import { z, ZodError } from 'zod';
 import { createAuthenticate, requireRoles } from './auth/middleware.js';
-import { loginSchema, organizationInputSchema, registerSchema, verificationSchema, verificationStatusSchema } from './auth/schemas.js';
-import { authenticateAccount, createAccount, createOrganization } from './auth/service.js';
+import { loginSchema, organizationInputSchema, phoneEnrollmentSchema, registerSchema, verificationSchema } from './auth/schemas.js';
+import { authenticateAccount, createAccount, createOrganization, enrollLegacyPhone } from './auth/service.js';
 import { ApiError } from './http/errors.js';
+
+const pageQuery = { page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(50).default(10) };
+const organizationAdminQuerySchema = z.object({
+  ...pageQuery,
+  status: z.enum(['all', 'pending', 'verified', 'rejected']).default('pending'),
+  type: z.enum(['all', 'donor', 'recipient']).default('all'),
+  search: z.string().trim().max(160).optional(),
+});
+const adminUserQuerySchema = z.object({
+  ...pageQuery,
+  role: z.enum(['all', 'donor', 'ngo', 'volunteer', 'admin']).default('all'),
+  active: z.enum(['all', 'active', 'inactive']).default('all'),
+  search: z.string().trim().max(160).optional(),
+});
 
 export function createApp(pool: Pool, jwtSecret: string) {
   const app = express();
@@ -39,7 +53,7 @@ export function createApp(pool: Pool, jwtSecret: string) {
     try {
       const input = registerSchema.parse(request.body);
       await createAccount(pool, input);
-      const session = await authenticateAccount(pool, input.email, input.password, jwtSecret);
+      const session = await authenticateAccount(pool, input.email, input.phone, input.password, jwtSecret);
       response.status(201).json({ data: session });
     } catch (error) { next(error); }
   });
@@ -47,7 +61,14 @@ export function createApp(pool: Pool, jwtSecret: string) {
   app.post('/api/v1/auth/login', authLimiter, async (request, response, next) => {
     try {
       const input = loginSchema.parse(request.body);
-      response.json({ data: await authenticateAccount(pool, input.email, input.password, jwtSecret) });
+      response.json({ data: await authenticateAccount(pool, input.email, input.phone, input.password, jwtSecret) });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/v1/auth/enroll-phone', authLimiter, async (request, response, next) => {
+    try {
+      const input = phoneEnrollmentSchema.parse(request.body);
+      response.json({ data: await enrollLegacyPhone(pool, input, jwtSecret) });
     } catch (error) { next(error); }
   });
 
@@ -74,10 +95,11 @@ export function createApp(pool: Pool, jwtSecret: string) {
       const result = await pool.query(
         `SELECT o.id, o.name, o.organization_type, o.verification_status, o.verification_note,
                 o.verified_at, o.address, o.city, o.locality, o.pincode, o.created_at,
+                u.full_name AS contact_name, u.email AS contact_email, COALESCE(u.phone_e164, u.phone) AS contact_phone,
                 COALESCE(json_agg(json_build_object('city', sa.city, 'locality', sa.locality, 'pincode', sa.pincode))
                   FILTER (WHERE sa.id IS NOT NULL), '[]') AS service_areas
-         FROM organizations o LEFT JOIN service_areas sa ON sa.organization_id = o.id
-         WHERE o.owner_user_id = $1 GROUP BY o.id ORDER BY o.created_at DESC LIMIT 1`,
+         FROM organizations o JOIN users u ON u.id = o.owner_user_id LEFT JOIN service_areas sa ON sa.organization_id = o.id
+         WHERE o.owner_user_id = $1 GROUP BY o.id, u.id ORDER BY o.created_at DESC LIMIT 1`,
         [request.auth!.id],
       );
       if (!result.rowCount) throw new ApiError(404, 'ORGANIZATION_NOT_FOUND', 'No organization is registered for this account.');
@@ -85,19 +107,81 @@ export function createApp(pool: Pool, jwtSecret: string) {
     } catch (error) { next(error); }
   });
 
+  app.get('/api/v1/admin/overview', authenticate, requireRoles('admin'), async (_request, response, next) => {
+    try {
+      const [counts, recentUsers, recentReviews] = await Promise.all([
+        pool.query(`SELECT
+          (SELECT count(*) FROM users)::int AS total_users,
+          (SELECT count(*) FROM users WHERE role = 'donor')::int AS donors,
+          (SELECT count(*) FROM users WHERE role = 'ngo')::int AS ngos,
+          (SELECT count(*) FROM users WHERE role = 'volunteer')::int AS volunteers,
+          (SELECT count(*) FROM organizations WHERE verification_status = 'pending')::int AS pending_organizations,
+          (SELECT count(*) FROM organizations WHERE verification_status = 'verified')::int AS verified_organizations,
+          (SELECT count(*) FROM organizations WHERE verification_status = 'rejected')::int AS rejected_organizations`),
+        pool.query(`SELECT id, full_name, email, role, is_active, created_at FROM users ORDER BY created_at DESC LIMIT 6`),
+        pool.query(`SELECT o.id, o.name, o.organization_type, o.verification_status, o.verified_at,
+                           u.full_name AS owner_name, reviewer.full_name AS reviewer_name
+                    FROM organizations o JOIN users u ON u.id = o.owner_user_id
+                    LEFT JOIN users reviewer ON reviewer.id = o.verified_by_user_id
+                    WHERE o.verified_at IS NOT NULL ORDER BY o.verified_at DESC LIMIT 6`),
+      ]);
+      response.json({ data: { counts: counts.rows[0], recentUsers: recentUsers.rows, recentReviews: recentReviews.rows } });
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/v1/admin/users', authenticate, requireRoles('admin'), async (request, response, next) => {
+    try {
+      const query = adminUserQuerySchema.parse(request.query);
+      const search = query.search ? `%${query.search}%` : null;
+      const role = query.role === 'all' ? null : query.role;
+      const active = query.active === 'all' ? null : query.active === 'active';
+      const values = [search, role, active, query.limit, (query.page - 1) * query.limit];
+      const [rows, total] = await Promise.all([
+        pool.query(`SELECT id, full_name, email, COALESCE(phone_e164, phone) AS phone, role, is_active, created_at
+                    FROM users WHERE ($1::text IS NULL OR full_name ILIKE $1 OR email ILIKE $1)
+                      AND ($2::text IS NULL OR role = $2) AND ($3::boolean IS NULL OR is_active = $3)
+                    ORDER BY created_at DESC LIMIT $4 OFFSET $5`, values),
+        pool.query(`SELECT count(*)::int AS total FROM users
+                    WHERE ($1::text IS NULL OR full_name ILIKE $1 OR email ILIKE $1)
+                      AND ($2::text IS NULL OR role = $2) AND ($3::boolean IS NULL OR is_active = $3)`, values.slice(0, 3)),
+      ]);
+      const totalCount = total.rows[0].total as number;
+      response.json({ data: { users: rows.rows, pagination: { page: query.page, limit: query.limit, total: totalCount, pages: Math.ceil(totalCount / query.limit) } } });
+    } catch (error) { next(error); }
+  });
+
   app.get('/api/v1/admin/organizations', authenticate, requireRoles('admin'), async (request, response, next) => {
     try {
-      const parsed = verificationStatusSchema.safeParse(request.query.status ?? 'pending');
-      if (!parsed.success) throw new ApiError(400, 'VALIDATION_ERROR', 'Status must be pending, verified, or rejected.', validationDetails(parsed.error));
-      const result = await pool.query(
+      const query = organizationAdminQuerySchema.parse(request.query);
+      const status = query.status === 'all' ? null : query.status;
+      const type = query.type === 'all' ? null : query.type;
+      const search = query.search ? `%${query.search}%` : null;
+      const values = [status, type, search, query.limit, (query.page - 1) * query.limit];
+      const [result, count] = await Promise.all([pool.query(
         `SELECT o.id, o.name, o.organization_type, o.verification_status, o.address, o.city,
                 o.locality, o.pincode, o.created_at, o.verification_note,
-                u.id AS owner_id, u.full_name AS owner_name, u.email AS owner_email, u.phone AS owner_phone
+                o.verified_at, u.id AS owner_id, u.full_name AS owner_name, u.email AS owner_email,
+                COALESCE(u.phone_e164, u.phone) AS owner_phone, reviewer.full_name AS reviewer_name
          FROM organizations o JOIN users u ON u.id = o.owner_user_id
-         WHERE o.verification_status = $1 ORDER BY o.created_at ASC`,
-        [parsed.data],
-      );
-      response.json({ data: { organizations: result.rows } });
+         LEFT JOIN users reviewer ON reviewer.id = o.verified_by_user_id
+         WHERE ($1::text IS NULL OR o.verification_status = $1)
+           AND ($2::text IS NULL OR o.organization_type = $2)
+           AND ($3::text IS NULL OR o.name ILIKE $3 OR u.email ILIKE $3 OR u.full_name ILIKE $3)
+         ORDER BY o.created_at DESC LIMIT $4 OFFSET $5`, values),
+        pool.query(`SELECT count(*)::int AS total FROM organizations o JOIN users u ON u.id = o.owner_user_id
+          WHERE ($1::text IS NULL OR o.verification_status = $1) AND ($2::text IS NULL OR o.organization_type = $2)
+            AND ($3::text IS NULL OR o.name ILIKE $3 OR u.email ILIKE $3 OR u.full_name ILIKE $3)`, values.slice(0, 3)),
+      ]);
+      const total = count.rows[0].total as number;
+      response.json({ data: { organizations: result.rows, pagination: { page: query.page, limit: query.limit, total, pages: Math.ceil(total / query.limit) } } });
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/v1/volunteers/me', authenticate, requireRoles('volunteer'), async (request, response, next) => {
+    try {
+      const result = await pool.query('SELECT city, pincode, is_available FROM volunteer_profiles WHERE user_id = $1', [request.auth!.id]);
+      if (!result.rowCount) throw new ApiError(404, 'PROFILE_NOT_FOUND', 'Volunteer profile was not found.');
+      response.json({ data: { profile: result.rows[0] } });
     } catch (error) { next(error); }
   });
 
