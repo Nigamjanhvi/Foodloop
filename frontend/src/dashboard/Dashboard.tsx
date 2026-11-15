@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Activity, Bell, Building2, Check, ChevronDown, ChevronRight, ClipboardList, FileCheck2, Heart, Leaf, LogOut, Menu, PackageCheck, Settings, ShieldCheck, Truck, Users, Utensils, X } from 'lucide-react';
+import { Activity, ArrowRight, Bell, Building2, Check, ChevronDown, ChevronRight, ClipboardList, FileCheck2, Heart, Leaf, LogOut, Menu, PackageCheck, RefreshCw, Settings, ShieldCheck, Truck, Users, Utensils, X } from 'lucide-react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth, errorMessage, type CurrentUser, type UserRole } from '../auth/AuthContext';
@@ -147,25 +147,36 @@ function DonorRejected({ user, organization, onRefresh }: { user: CurrentUser; o
 }
 
 function DonorWorkspace({ user, organization, onRefresh }: { user: CurrentUser; organization: OrganizationProfile; onRefresh(): void }) {
+  const [summary, setSummary] = useState<{ total_donations: number; active_donations: number; completed_deliveries: number; quantity_by_unit: { unit: string; quantity: number | string }[] } | null>(null);
+  const [summaryError, setSummaryError] = useState('');
+  async function loadSummary() {
+    setSummaryError('');
+    try { const { data } = await api.get<{ data: { summary: NonNullable<typeof summary> } }>('/donations/mine?limit=1'); setSummary(data.data.summary); }
+    catch (failure) { setSummaryError(errorMessage(failure)); }
+  }
+  useEffect(() => { void loadSummary(); }, []);
+  const quantitySummary = summary?.quantity_by_unit.length
+    ? summary.quantity_by_unit.map((item) => `${item.quantity} ${item.unit === 'kilograms' ? 'kg' : item.unit}`).join(' · ')
+    : '0';
   const metrics = [
-    ['Total donations', 'Soon', 'Available when donation records are introduced', <Utensils size={18} />, 'sage'],
-    ['Active donations', 'Soon', 'No donation API is connected yet', <Activity size={18} />, 'orange'],
-    ['Food donated', 'Soon', 'Quantity metrics will use saved donations', <Leaf size={18} />, 'blue'],
-    ['Completed deliveries', 'Soon', 'Delivery records are not available yet', <PackageCheck size={18} />, 'plum'],
+    ['Total donations', summary?.total_donations ?? (summaryError ? 'Unavailable' : '…'), summary?.total_donations === 0 ? 'Your first donation starts here.' : 'Saved donation listings', <Utensils size={18} />, 'sage'],
+    ['Active donations', summary?.active_donations ?? (summaryError ? 'Unavailable' : '…'), 'Available or partially reserved', <Activity size={18} />, 'orange'],
+    ['Quantity listed', summary ? quantitySummary : summaryError ? 'Unavailable' : '…', summary?.quantity_by_unit.length ? 'Total saved listing quantity, by unit' : 'No donation records yet', <Leaf size={18} />, 'blue'],
+    ['Completed deliveries', summary?.completed_deliveries ?? (summaryError ? 'Unavailable' : '…'), 'Recorded delivered reservations', <PackageCheck size={18} />, 'plum'],
   ] as const;
   return <div className="page-content donor-state-page">
-    <PageHeader eyebrow="VERIFIED DONOR WORKSPACE" title={<>Good to have you here, <span className="welcome-name">{user.fullName.split(' ')[0]}</span></>} description={organization.name} actions={<div className="header-actions"><StatusBadge status="verified" label="Verified organization" /><button className="outline-button" onClick={onRefresh}>Refresh status</button></div>} />
-    <section className="dashboard-card verified-banner"><span className="verified-banner-icon"><ShieldCheck size={21} /></span><div><strong>Your organization is verified.</strong><p>The workspace is ready. Donation and reservation actions will become active when their APIs are implemented.</p></div><button className="button disabled-feature" disabled title="Donation creation is coming in Phase 3">Create donation <ChevronRight size={16} /></button></section>
+    <PageHeader eyebrow="VERIFIED DONOR WORKSPACE" title={<>Good to have you here, <span className="welcome-name">{user.fullName.split(' ')[0]}</span></>} description={organization.name} actions={<div className="header-actions"><StatusBadge status="verified" label="Verified organization" /><button className="outline-button" onClick={() => { onRefresh(); void loadSummary(); }}><RefreshCw size={16} /> Refresh</button></div>} />
+    {summaryError && <ErrorNotice message={summaryError} onRetry={() => void loadSummary()} />}
+    <section className="dashboard-card verified-banner"><span className="verified-banner-icon"><ShieldCheck size={21} /></span><div><strong>Your organization is verified.</strong><p>Create a real food listing with quantity, storage, pickup location, and collection deadline.</p></div><Link className="button" to="/dashboard/donor/donations/new">Create donation <ChevronRight size={16} /></Link></section>
     <div className="stat-grid donor-stat-grid">{metrics.map(([label, value, note, icon, tone]) => <StatCard key={label} label={label} value={value} note={note} icon={icon} tone={tone} />)}</div>
-    <div className="quick-action-grid"><FeatureAction icon={<Utensils size={19} />} title="Create new donation" detail="Post surplus food and pickup details." /><FeatureAction icon={<ClipboardList size={19} />} title="Manage my donations" detail="Review active and completed listings." /><FeatureAction icon={<Users size={19} />} title="Reservation requests" detail="Coordinate with nearby recipients." /><FeatureAction icon={<PackageCheck size={19} />} title="Donation history" detail="See completed and expired listings." /></div>
-    <section className="dashboard-card donor-empty-workspace"><EmptyState icon={<Utensils size={28} />} title="Your first donation starts here" description="This organization is verified. Donation listings will appear here when the donation workflow is connected." action={<span className="coming-tag">COMING SOON</span>} /></section>
-    <section className="workspace-section-grid"><ComingSoonPanel title="My donations" description="Donation records and listing APIs are part of the next application phase." features={['Food item, quantity and category', 'Pickup locality and collection deadline', 'Remaining quantity and current status']} /><ComingSoonPanel title="Reservation activity" description="Reservation requests will appear here when the reservation workflow is available." features={['Recipient organization and reserved quantity', 'Decision and pickup progress']} /></section>
-    <div className="workspace-section-grid"><ComingSoonPanel title="Impact from your donations" description="Impact totals and trends will be calculated only from completed database records." features={['Food delivered', 'Organizations reached', 'Monthly trends']} /><ComingSoonPanel title="Notifications" description="There is no notification feed yet, so this panel will stay empty until real notification records are connected." features={['Organization status updates', 'Reservation and delivery updates']} /></div>
+    <div className="quick-action-grid"><FeatureAction to="/dashboard/donor/donations/new" icon={<Utensils size={19} />} title="Create new donation" detail="Post surplus food and pickup details." /><FeatureAction to="/dashboard/donor/donations" icon={<ClipboardList size={19} />} title="Manage my donations" detail="Review active and completed listings." /><FeatureAction to="/dashboard/donor/reservations" icon={<Users size={19} />} title="Reservation requests" detail="Coordinate with nearby recipients." /><FeatureAction to="/dashboard/donor/history" icon={<PackageCheck size={19} />} title="Donation history" detail="See completed and expired listings." /></div>
+    {!summaryError && summary?.total_donations === 0 && <section className="dashboard-card donor-empty-workspace"><EmptyState icon={<Utensils size={28} />} title="Your first donation starts here" description="Your verified organization can now publish its first real listing for nearby recipient organizations." action={<Link className="button" to="/dashboard/donor/donations/new">Create your first donation <ChevronRight size={17} /></Link>} /></section>}
+    <section className="workspace-section-grid"><ComingSoonPanel title="Delivery impact" description="Delivery totals are calculated only from reservation records marked delivered. Volunteer delivery tracking is deferred to Phase 4." features={['Recorded delivered quantity', 'Organization participation']} /><ComingSoonPanel title="Notifications" description="There is no notification feed yet, so this panel will stay empty until real notification records are connected." features={['Organization status updates', 'Reservation updates']} /></section>
   </div>;
 }
 
-function FeatureAction({ icon, title, detail }: { icon: ReactNode; title: string; detail: string }) {
-  return <button className="feature-action" type="button" disabled title="Coming soon"><span>{icon}</span><strong>{title}</strong><small>{detail}</small><em>Coming soon</em></button>;
+function FeatureAction({ to, icon, title, detail }: { to: string; icon: ReactNode; title: string; detail: string }) {
+  return <Link className="feature-action" to={to}><span>{icon}</span><strong>{title}</strong><small>{detail}</small><em>Open workspace</em></Link>;
 }
 
 export function NgoDashboard() {
@@ -176,8 +187,8 @@ export function NgoDashboard() {
   if (!organization) return <div className="page-content"><PageHeader eyebrow="RECIPIENT WORKSPACE" title="Organization profile missing" description="This account has no linked recipient organization." /></div>;
   return <div className="page-content"><PageHeader eyebrow="NGO & RECIPIENT WORKSPACE" title={<>Welcome, <span className="welcome-name">{user!.fullName.split(' ')[0]}</span></>} description={organization.name} actions={<StatusBadge status={organization.verification_status} label={`${organization.verification_status} organization`} />} />
     <OrgDetailsCard organization={organization} />
-    <div className="ngo-welcome-card"><span><Heart size={21} /></span><div><span className="eyebrow">COMMUNITY RECIPIENT</span><h2>Good food, in reach.</h2><p>Once verified, your organization will be ready to discover nearby surplus food. Donation discovery is coming in a later phase.</p></div><button className="outline-button" onClick={() => void refresh()}>Refresh status</button></div>
-    <div className="workspace-section-grid"><ComingSoonPanel title="Nearby food" description="There are no live donation listings until the donation and locality matching APIs are built." features={['City, locality and pincode filters', 'Food category and quantity filters', 'Collection deadlines']} /><ComingSoonPanel title="Reservations & pickup" description="No reservation or delivery records are shown before those workflows are implemented." features={['Reservation status', 'Pickup and delivery progress', 'Reservation history']} /></div>
+    <div className="ngo-welcome-card"><span><Heart size={21} /></span><div><span className="eyebrow">COMMUNITY RECIPIENT</span><h2>Good food, in reach.</h2><p>{organization.verification_status === 'verified' ? 'Browse real donor listings matched to your saved city, locality, pincode, and service areas.' : 'Your organization must be verified before it can browse and reserve donation listings.'}</p></div><button className="outline-button" onClick={() => void refresh()}><RefreshCw size={16} /> Refresh status</button></div>
+    <div className="workspace-section-grid"><Link className="ngo-workspace-action" to="/dashboard/ngo/available"><span><Utensils size={22} /></span><div><span className="eyebrow">DISCOVERY</span><h2>Find food nearby</h2><p>Search available listings by locality, pincode, category, and quantity.</p></div><ArrowRight size={20} /></Link><Link className="ngo-workspace-action" to="/dashboard/ngo/reservations"><span><ClipboardList size={22} /></span><div><span className="eyebrow">YOUR REQUESTS</span><h2>My reservations</h2><p>Track pending, accepted, rejected, and cancelled requests saved for your organization.</p></div><ArrowRight size={20} /></Link></div>
   </div>;
 }
 

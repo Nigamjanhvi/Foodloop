@@ -1,5 +1,5 @@
 import { ArrowRight, Leaf } from 'lucide-react';
-import { Link, Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { Link, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { LoginPage } from './auth/AuthPages';
 import RegistrationFlow from './auth/RegistrationFlow';
@@ -9,6 +9,7 @@ import { AdminComingSoonPage, AdminOverview, AdminUsersPage, AccessTrustPage, Or
 import { DashboardFrame, DonorDashboard, NgoDashboard, VolunteerDashboard } from './dashboard/Dashboard';
 import { ComingSoonPanel, PageHeader } from './components/ui';
 import type { UserRole } from './auth/AuthContext';
+import { AdminDonationManagementPage, AdminReservationManagementPage, CreateDonationPage, DonorDonationsPage, DonorReservationRequestsPage, DonationDetailsPage, FoodDiscoveryPage, RecipientReservationsPage, ReservationDetailsPage } from './donations/DonationPages';
 
 function DashboardRedirect() {
   const { user } = useAuth();
@@ -27,16 +28,35 @@ function AppRoutes() {
     <Route element={<RequireAuth />}>
       <Route path="/dashboard" element={<DashboardRedirect />} />
       <Route element={<DashboardFrame />}>
-        <Route path="/dashboard/donor" element={<RequireAuth roles={['donor']} />}><Route index element={<DonorDashboard />} /><Route path="donations" element={<RoleFuturePage role="donor" title="My donations" description="Donation listing and management." features={['Food item and quantity', 'Collection deadline', 'Remaining quantity and status']} />} /><Route path="reservations" element={<RoleFuturePage role="donor" title="Reservation requests" description="Coordinate requests from recipient organizations." features={['Recipient details', 'Requested quantity', 'Pickup progress']} />} /><Route path="history" element={<RoleFuturePage role="donor" title="Donation history" description="Completed, cancelled, and expired food listings." features={['Completed donations', 'Expired listings', 'Delivery history']} />} /><Route path="notifications" element={<RoleFuturePage role="donor" title="Notifications" description="Donor updates from the FoodLoop platform." features={['Organization status', 'Reservation updates', 'Delivery completion']} />} /></Route>
-        <Route path="/dashboard/ngo" element={<RequireAuth roles={['ngo']} />}><Route index element={<NgoDashboard />} /><Route path="available" element={<RoleFuturePage role="ngo" title="Browse available food" description="Locality-based food discovery will use real donor listings." features={['City and pincode filters', 'Food category', 'Collection deadline']} />} /><Route path="reservations" element={<RoleFuturePage role="ngo" title="My reservations" description="Reservation requests and their recorded status." features={['Requested quantity', 'Reservation status', 'Donor details']} />} /><Route path="tracking" element={<RoleFuturePage role="ngo" title="Pickup and delivery" description="Track a confirmed pickup when volunteer tasks become available." features={['Pickup details', 'Volunteer assignment', 'Delivery confirmation']} />} /><Route path="history" element={<RoleFuturePage role="ngo" title="Reservation history" description="Previous food pickups and deliveries." features={['Delivered food', 'Cancelled requests', 'Recipient records']} />} /></Route>
+        <Route path="/dashboard/donor" element={<RequireAuth roles={['donor']} />}>
+          <Route index element={<DonorDashboard />} />
+          <Route path="donations" element={<DonorDonationsPage />} />
+          <Route path="donations/new" element={<CreateDonationPage />} />
+          <Route path="donations/:id" element={<DonationDetailsPage />} />
+          <Route path="reservations" element={<DonorReservationRequestsPage />} />
+          <Route path="reservations/:id" element={<ReservationDetailsPage />} />
+          <Route path="history" element={<DonorDonationsPage historyOnly />} />
+          <Route path="notifications" element={<RoleFuturePage role="donor" title="Notifications" description="Donor updates from the FoodLoop platform." features={['Organization status', 'Reservation updates', 'Delivery completion']} />} />
+        </Route>
+        <Route path="/dashboard/ngo" element={<RequireAuth roles={['ngo']} />}>
+          <Route index element={<NgoDashboard />} />
+          <Route path="available" element={<FoodDiscoveryPage />} />
+          <Route path="available/:id" element={<DonationDetailsPage />} />
+          <Route path="reservations" element={<RecipientReservationsPage />} />
+          <Route path="reservations/:id" element={<ReservationDetailsPage />} />
+          <Route path="tracking" element={<RoleFuturePage role="ngo" title="Pickup and delivery" description="Volunteer pickup and delivery tracking belongs to Phase 4." features={['Pickup details', 'Volunteer assignment', 'Delivery confirmation']} />} />
+          <Route path="history" element={<RecipientReservationsPage historyOnly />} />
+        </Route>
         <Route path="/dashboard/volunteer" element={<RequireAuth roles={['volunteer']} />}><Route index element={<VolunteerDashboard />} /><Route path="tasks" element={<RoleFuturePage role="volunteer" title="Assigned tasks" description="Volunteer assignments will appear after donation and pickup workflows exist." features={['Pickup location and deadline', 'Donor and recipient contact', 'OTP verification']} />} /><Route path="history" element={<RoleFuturePage role="volunteer" title="Task history" description="Completed volunteer assignments backed by saved delivery records." features={['Completed tasks', 'Pickup and delivery timestamps']} />} /></Route>
         <Route path="/dashboard/admin" element={<RequireAuth roles={['admin']} />}>
           <Route index element={<AdminOverview />} />
           <Route path="organizations" element={<OrganizationReviewPage />} />
           <Route path="users" element={<AdminUsersPage />} /><Route path="donors" element={<AdminUsersPage />} /><Route path="ngos" element={<AdminUsersPage />} /><Route path="volunteers" element={<AdminUsersPage />} />
           <Route path="trust" element={<AccessTrustPage />} />
-          <Route path="donations" element={<AdminComingSoonPage title="Donation management" description="Manage FoodLoop donation listings." features={['Donation review', 'Status management', 'Food safety eligibility']} />} />
-          <Route path="reservations" element={<AdminComingSoonPage title="Reservation management" description="Review and track recipient reservations." features={['Partial reservations', 'Status history', 'Over-reservation safeguards']} />} />
+          <Route path="donations" element={<AdminDonationManagementPage />} />
+          <Route path="donations/:id" element={<DonationDetailsPage />} />
+          <Route path="reservations" element={<AdminReservationManagementPage />} />
+          <Route path="reservations/:id" element={<ReservationDetailsPage />} />
           <Route path="tasks" element={<AdminComingSoonPage title="Volunteer task management" description="Manage assigned pickup and delivery tasks." features={['Volunteer assignments', 'Pickup progress', 'OTP delivery checks']} />} />
           <Route path="notifications" element={<AdminComingSoonPage title="Notification operations" description="Monitor real notification queue records when the worker is implemented." features={['Queued messages', 'Retry attempts', 'Delivery failures']} />} />
           <Route path="analytics" element={<AdminComingSoonPage title="Reports and analytics" description="Analytics will appear only when real donation and delivery records exist." features={['Monthly donations', 'Food successfully delivered', 'Locality trends']} />} />

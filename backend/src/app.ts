@@ -7,6 +7,7 @@ import { z, ZodError } from 'zod';
 import { createAuthenticate, requireRoles } from './auth/middleware.js';
 import { loginSchema, organizationInputSchema, phoneEnrollmentSchema, registerSchema, verificationSchema } from './auth/schemas.js';
 import { authenticateAccount, createAccount, createOrganization, enrollLegacyPhone } from './auth/service.js';
+import { createDonationRouter } from './donations/routes.js';
 import { ApiError } from './http/errors.js';
 
 const pageQuery = { page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(50).default(10) };
@@ -204,6 +205,8 @@ export function createApp(pool: Pool, jwtSecret: string) {
       response.json({ data: { organization: updated.rows[0] } });
     } catch (error) { next(error); }
   });
+
+  app.use('/api/v1', createDonationRouter(pool, jwtSecret));
 
   const errors: ErrorRequestHandler = (error, _request, response, _next) => {
     if (error instanceof ZodError) {

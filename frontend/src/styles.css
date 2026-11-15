@@ -421,6 +421,96 @@ mark { display: inline; padding: 0 .12em .04em; color: var(--black); background:
 .trust-control p small { color: #374151; }
 .planned-trust { background: var(--yellow); }
 
+/* Phase 3 donation and reservation workflows */
+.donation-form { display: grid; gap: 22px; background: var(--paper); }
+.donation-form-section { border: 3px solid var(--black); padding: clamp(15px, 2.5vw, 27px); background: var(--white); }
+.form-section-heading { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; border-bottom: 2px solid var(--black); padding-bottom: 14px; }
+.form-section-heading > span { display: grid; width: 46px; height: 46px; flex: 0 0 auto; place-items: center; border: 2px solid var(--black); background: var(--lime); font-family: var(--font-display); font-size: 17px; font-weight: 800; }
+.form-section-heading h2 { margin: 0 0 3px; font-size: clamp(1.35rem, 2.5vw, 1.9rem); }
+.form-section-heading p { margin: 0; color: #374151; font-size: 14px; }
+.donation-form .form-grid { gap: 17px; }
+.donation-form .field-label { margin-bottom: 6px; }
+.donation-form .plain-input { border-radius: 7px; }
+.donation-textarea { min-height: 105px; resize: vertical; }
+.quantity-field { display: flex; align-items: stretch; gap: 8px; }
+.quantity-field > .plain-input:first-child { min-width: 0; flex: 1; }
+.quantity-field select.plain-input { width: 145px; flex: 0 0 auto; }
+.food-safety-note { display: flex; align-items: flex-start; gap: 9px; margin: 18px 0 0; border: 2px solid var(--black); padding: 12px; background: var(--yellow); font-size: 14px; font-weight: 600; }
+.food-safety-note svg { flex: 0 0 auto; }
+.donation-form-footer { display: flex; justify-content: space-between; gap: 12px; }
+.donation-form-footer .button { min-width: 200px; }
+.donation-toolbar, .discovery-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px; }
+.donation-toolbar .search-control { flex: 1 1 230px; }
+.donation-toolbar .select-control { min-width: 160px; }
+.locality-search { flex: 0 1 180px !important; }
+.donation-status-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.donation-status-tabs button { min-height: 43px; border: 2px solid var(--black); border-radius: 6px; padding: 7px 12px; background: var(--white); cursor: pointer; font-size: 13px; font-weight: 800; text-transform: capitalize; }
+.donation-status-tabs button.selected { background: var(--lime); box-shadow: 3px 3px 0 var(--black); }
+.donation-grid, .reservation-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.donation-card, .reservation-card { display: flex; min-width: 0; flex-direction: column; gap: 10px; border: 3px solid var(--black); border-radius: 11px; padding: 17px; background: var(--white); box-shadow: var(--shadow-small); transition: transform 150ms ease, box-shadow 150ms ease; }
+.donation-card:hover, .reservation-card:hover { transform: translate(-2px, -2px); box-shadow: 7px 7px 0 var(--black); }
+.donation-card-top { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+.donation-icon { display: grid; width: 48px; height: 48px; flex: 0 0 auto; place-items: center; border: 2px solid var(--black); background: var(--lime); }
+.donation-category { color: #374151; font-size: 12px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.donation-card h2, .reservation-card h2 { margin: 0; font-size: 23px; line-height: 1.1; overflow-wrap: anywhere; }
+.donation-quantity, .reservation-quantity { margin: 0; font-size: 15px; }
+.donation-quantity strong, .reservation-quantity strong { font-family: var(--font-display); font-size: 25px; }
+.donation-quantity span { color: #4b5563; }
+.donation-location, .donation-deadline, .donation-donor { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; font-weight: 600; }
+.donation-location svg, .donation-deadline svg, .donation-donor svg { flex: 0 0 auto; color: var(--forest); }
+.donation-card > .button, .donation-card > .outline-button { width: 100%; min-height: 48px; margin-top: auto; font-size: 14px; }
+.donation-donor { border-top: 2px solid var(--black); padding-top: 9px; font-weight: 800; }
+.success-banner { display: flex; align-items: center; gap: 10px; border: 3px solid var(--black); padding: 13px; background: var(--lime); font-weight: 800; }
+.donation-detail-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(270px, .8fr); align-items: start; gap: 18px; }
+.donation-detail-main { display: grid; gap: 14px; }
+.donation-detail-main .section-heading h2 { font-size: clamp(2.4rem, 5vw, 4.6rem); }
+.donation-detail-main .section-heading h2 small { font-family: var(--font-body); font-size: 17px; letter-spacing: 0; }
+.detail-quantity-track { height: 15px; overflow: hidden; border: 2px solid var(--black); background: #e5e7eb; }
+.detail-quantity-track span { display: block; height: 100%; border-right: 2px solid var(--black); background: var(--lime); }
+.donation-detail-main > p { margin: 0; font-size: 14px; font-weight: 700; }
+.detail-description { border-top: 2px solid var(--black); padding-top: 13px; }
+.detail-description h3 { margin: 0 0 6px; font-size: 20px; }
+.detail-description p { margin: 0; }
+.detail-meta-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; border-top: 2px solid var(--black); padding-top: 14px; }
+.detail-meta-grid > div { display: grid; gap: 3px; }
+.detail-meta-grid > div > span { color: #374151; font-size: 12px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.detail-meta-grid > div > strong { font-size: 14px; overflow-wrap: anywhere; }
+.donation-detail-aside { display: grid; gap: 15px; }
+.donor-organization-detail, .reservation-request-form, .donation-management-actions { display: grid; align-content: start; gap: 12px; }
+.donor-organization-detail { background: var(--yellow); }
+.donor-organization-detail h2 { margin: 0; font-size: 23px; }
+.donor-organization-detail small { font-weight: 700; }
+.reservation-request-form { background: var(--lilac); }
+.reservation-request-form h2 { margin: 0; font-size: 26px; }
+.reservation-request-form .quantity-field .plain-input { min-width: 0; }
+.unit-suffix { display: grid; flex: 0 0 auto; place-items: center; border: 2px solid var(--black); padding: 0 12px; background: var(--white); font-size: 13px; font-weight: 800; white-space: nowrap; }
+.reservation-request-form .button { width: 100%; }
+.reservation-hold-note { border: 2px solid var(--black); padding: 10px; background: var(--white); font-size: 13px; font-weight: 700; }
+.donation-management-actions { background: var(--yellow); }
+.donation-management-actions > .outline-button, .donation-management-actions > .reject-button { width: 100%; }
+.reservation-parties { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; border-top: 2px solid var(--black); padding-top: 9px; }
+.reservation-parties p { display: grid; margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+.reservation-parties p strong { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.reservation-message { margin: 0; border-left: 4px solid var(--forest); padding: 7px 10px; background: var(--cream); font-size: 14px; }
+.reservation-reason { margin: 0; border: 2px solid var(--black); padding: 9px; background: var(--yellow); font-size: 13px; }
+.reservation-card-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: auto; padding-top: 7px; }
+.reservation-card-actions > * { flex: 1; min-height: 44px; padding: 7px; font-size: 13px; }
+.reservation-card-actions .outline-button { box-shadow: none; }
+.discovery-filters { align-items: end; }
+.discovery-filters .search-control { min-width: 230px; flex: 2 1 260px; }
+.plain-field-label { display: grid; min-width: 140px; flex: 1; gap: 4px; font-size: 13px; font-weight: 800; }
+.plain-field-label .plain-input { min-height: 48px; }
+.ngo-workspace-action { display: flex; align-items: center; gap: 15px; border: 3px solid var(--black); border-radius: 10px; padding: 20px; background: var(--lime); box-shadow: var(--shadow-small); text-decoration: none; transition: transform 150ms ease, box-shadow 150ms ease; }
+.ngo-workspace-action:nth-child(2) { background: var(--yellow); }
+.ngo-workspace-action:hover { transform: translate(-2px, -2px); box-shadow: 7px 7px 0 var(--black); }
+.ngo-workspace-action > span { display: grid; width: 54px; height: 54px; flex: 0 0 auto; place-items: center; border: 2px solid var(--black); background: var(--white); }
+.ngo-workspace-action > div { flex: 1; }
+.ngo-workspace-action .eyebrow { font-size: 11px; }
+.ngo-workspace-action h2 { margin: 3px 0 5px; font-size: 23px; }
+.ngo-workspace-action p { margin: 0; font-size: 14px; }
+.donor-empty-workspace { background: var(--white); }
+.donor-empty-workspace .empty-state { min-height: 220px; background: var(--cream); }
+
 /* Reusable states and dialogs */
 .empty-state { display: grid; justify-items: center; gap: 9px; border: 3px dashed var(--black); padding: 35px 20px; background: var(--cream); text-align: center; }
 .empty-state-icon { display: grid; width: 58px; height: 58px; place-items: center; border: 3px solid var(--black); background: var(--lime); }
@@ -469,6 +559,7 @@ mark { display: inline; padding: 0 .12em .04em; color: var(--black); background:
   .dashboard-content { padding-inline: 24px; }
   .stat-grid, .donor-stat-grid { gap: 11px; }
   .stat-card { padding: 14px; }
+  .donation-grid, .reservation-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 760px) {
   .landing-nav { min-height: 68px; padding: 9px 16px; }
@@ -498,6 +589,12 @@ mark { display: inline; padding: 0 .12em .04em; color: var(--black); background:
   .footer-brand, .footer-contact { grid-column: 1 / -1; }
   .footer-bottom { flex-direction: column; }
   .auth-page { display: block; }
+  .donation-grid, .reservation-grid, .donation-detail-grid { grid-template-columns: 1fr; }
+  .donation-form-footer { align-items: stretch; flex-direction: column-reverse; }
+  .donation-form-footer > * { width: 100%; justify-content: center; }
+  .detail-meta-grid { grid-template-columns: 1fr; }
+  .donation-toolbar > *, .discovery-filters > * { min-width: 100% !important; }
+  .reservation-parties { grid-template-columns: 1fr; }
   .auth-story { position: relative; min-height: 310px; padding: 22px 22px 32px; }
   .story-content { padding: 40px 0 10px; }
   .story-content h1 { margin: 18px 0 12px; font-size: clamp(3rem, 12vw, 4.8rem); }
