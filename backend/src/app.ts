@@ -8,6 +8,7 @@ import { createAuthenticate, requireRoles } from './auth/middleware.js';
 import { loginSchema, organizationInputSchema, phoneEnrollmentSchema, registerSchema, verificationSchema } from './auth/schemas.js';
 import { authenticateAccount, createAccount, createOrganization, enrollLegacyPhone } from './auth/service.js';
 import { createDonationRouter } from './donations/routes.js';
+import { createAssignmentRouter } from './assignments/routes.js';
 import { ApiError } from './http/errors.js';
 
 const pageQuery = { page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(50).default(10) };
@@ -54,7 +55,7 @@ export function createApp(pool: Pool, jwtSecret: string) {
     try {
       const input = registerSchema.parse(request.body);
       await createAccount(pool, input);
-      const session = await authenticateAccount(pool, input.email, input.phone, input.password, jwtSecret);
+      const session = await authenticateAccount(pool, input.email, input.password, jwtSecret);
       response.status(201).json({ data: session });
     } catch (error) { next(error); }
   });
@@ -62,7 +63,7 @@ export function createApp(pool: Pool, jwtSecret: string) {
   app.post('/api/v1/auth/login', authLimiter, async (request, response, next) => {
     try {
       const input = loginSchema.parse(request.body);
-      response.json({ data: await authenticateAccount(pool, input.email, input.phone, input.password, jwtSecret) });
+      response.json({ data: await authenticateAccount(pool, input.email, input.password, jwtSecret) });
     } catch (error) { next(error); }
   });
 
@@ -178,14 +179,6 @@ export function createApp(pool: Pool, jwtSecret: string) {
     } catch (error) { next(error); }
   });
 
-  app.get('/api/v1/volunteers/me', authenticate, requireRoles('volunteer'), async (request, response, next) => {
-    try {
-      const result = await pool.query('SELECT city, pincode, is_available FROM volunteer_profiles WHERE user_id = $1', [request.auth!.id]);
-      if (!result.rowCount) throw new ApiError(404, 'PROFILE_NOT_FOUND', 'Volunteer profile was not found.');
-      response.json({ data: { profile: result.rows[0] } });
-    } catch (error) { next(error); }
-  });
-
   app.patch('/api/v1/admin/organizations/:id/verification', authenticate, requireRoles('admin'), async (request, response, next) => {
     try {
       const parameter = request.params.id;
@@ -207,6 +200,7 @@ export function createApp(pool: Pool, jwtSecret: string) {
   });
 
   app.use('/api/v1', createDonationRouter(pool, jwtSecret));
+  app.use('/api/v1', createAssignmentRouter(pool, jwtSecret));
 
   const errors: ErrorRequestHandler = (error, _request, response, _next) => {
     if (error instanceof ZodError) {

@@ -81,17 +81,14 @@ test('registration validates input and atomically creates donor account and pend
 });
 
 test('login issues a signed session, /me requires it, and bad credentials are rejected', async () => {
-  const wrong = await request(app).post('/api/v1/auth/login').send({ email: 'donor@example.test', phone: '+911234567801', password: 'wrong-password' });
+  const shortPassword = await request(app).post('/api/v1/auth/login').send({ email: 'donor@example.test', password: '12345' });
+  assert.equal(shortPassword.status, 400);
+
+  const wrong = await request(app).post('/api/v1/auth/login').send({ email: 'donor@example.test', password: 'wrong-password' });
   assert.equal(wrong.status, 401);
   assert.equal(wrong.body.error.code, 'INVALID_CREDENTIALS');
 
-  const mismatch = await request(app).post('/api/v1/auth/login').send({ email: 'donor@example.test', phone: '+911234567899', password: testPassword });
-  assert.equal(mismatch.status, 401);
-
-  const missingPhone = await request(app).post('/api/v1/auth/login').send({ email: 'donor@example.test', password: testPassword });
-  assert.equal(missingPhone.status, 400);
-
-  const login = await request(app).post('/api/v1/auth/login').send({ email: 'donor@example.test', phone: '+911234567801', password: testPassword });
+  const login = await request(app).post('/api/v1/auth/login').send({ email: 'donor@example.test', password: testPassword });
   assert.equal(login.status, 200);
   donorToken = login.body.data.token;
   assert.ok(donorToken);
@@ -127,13 +124,13 @@ test('NGO and volunteer roles can register; admin cannot register publicly', asy
   assert.equal(forbiddenRole.status, 400);
 });
 
-test('legacy accounts can securely enroll a missing phone without resetting their password', async () => {
+test('legacy accounts can sign in without a phone and securely enroll one without resetting their password', async () => {
   const legacyPassword = 'Legacy_User_Pass_2026';
   const legacyHash = await bcrypt.hash(legacyPassword, 12);
   const legacy = await testPool.query("INSERT INTO users (full_name, email, password_hash, role) VALUES ('Legacy User', 'legacy@example.test', $1, 'volunteer') RETURNING id", [legacyHash]);
-  const needsPhone = await request(app).post('/api/v1/auth/login').send({ email: 'legacy@example.test', phone: '+911234567806', password: legacyPassword });
-  assert.equal(needsPhone.status, 428);
-  assert.equal(needsPhone.body.error.code, 'PHONE_ENROLLMENT_REQUIRED');
+  const signIn = await request(app).post('/api/v1/auth/login').send({ email: 'legacy@example.test', password: legacyPassword });
+  assert.equal(signIn.status, 200);
+  assert.ok(signIn.body.data.token);
 
   const enrolled = await request(app).post('/api/v1/auth/enroll-phone').send({ email: 'legacy@example.test', phone: '+911234567806', password: legacyPassword });
   assert.equal(enrolled.status, 200);
@@ -153,7 +150,7 @@ test('role authorization denies donors and admin verification records real revie
     ['Test Admin', 'admin@example.test', adminHash, '+911234567807'],
   );
   adminId = admin.rows[0].id;
-  const login = await request(app).post('/api/v1/auth/login').send({ email: 'admin@example.test', phone: '+911234567807', password: 'Admin_Test_Pass_2026_Strong' });
+  const login = await request(app).post('/api/v1/auth/login').send({ email: 'admin@example.test', password: 'Admin_Test_Pass_2026_Strong' });
   assert.equal(login.status, 200);
   adminToken = login.body.data.token;
 

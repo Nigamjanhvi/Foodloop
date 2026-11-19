@@ -341,6 +341,9 @@ mark { display: inline; padding: 0 .12em .04em; color: var(--black); background:
 .approval-info { border: 3px solid var(--black); padding: 18px; background: var(--yellow); }
 .approval-info p { margin: 0; font-weight: 700; }
 .volunteer-profile-card { display: flex; align-items: center; gap: 18px; background: var(--lilac); }
+.volunteer-profile-card > div { flex: 1; }
+.volunteer-profile-card h2 { margin: 3px 0; font-size: 25px; }
+.volunteer-profile-card p { margin: 0; }
 .volunteer-avatar-large { display: grid; width: 76px; height: 76px; flex: 0 0 auto; place-items: center; border: 3px solid var(--black); background: var(--lime); font-family: var(--font-display); font-size: 29px; font-weight: 800; }
 .workspace-section-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .rejected-panel { align-items: flex-start; background: #fecaca; }
@@ -508,6 +511,54 @@ mark { display: inline; padding: 0 .12em .04em; color: var(--black); background:
 .ngo-workspace-action .eyebrow { font-size: 11px; }
 .ngo-workspace-action h2 { margin: 3px 0 5px; font-size: 23px; }
 .ngo-workspace-action p { margin: 0; font-size: 14px; }
+.assignment-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 17px; }
+.assignment-card { display: flex; min-width: 0; flex-direction: column; gap: 12px; border: 3px solid var(--black); border-radius: 10px; padding: 17px; background: var(--white); box-shadow: var(--shadow-small); }
+.assignment-card-top { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+.assignment-mark { display: grid; width: 46px; height: 46px; flex: 0 0 auto; place-items: center; border: 2px solid var(--black); background: var(--lime); }
+.assignment-quantity { font-family: var(--font-display); font-size: 29px; }
+.assignment-location { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; }
+.assignment-location svg { flex: 0 0 auto; color: var(--forest); }
+.assignment-location span { display: grid; }
+.assignment-location b { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.assignment-deadline { display: flex; align-items: center; gap: 7px; margin-top: auto; font-size: 13px; font-weight: 700; }
+.assignment-card > .button { width: 100%; margin-top: 5px; }
+.assignment-detail-grid { display: grid; grid-template-columns: minmax(0,1.25fr) minmax(280px,.75fr); align-items: start; gap: 17px; }
+.assignment-detail-card,.assignment-stops,.assignment-panel,.assignment-action-panel,.volunteer-profile-form { display: grid; align-content: start; gap: 15px; }
+.assignment-panel-heading { display: flex; align-items: center; gap: 13px; }
+.assignment-panel-heading > div { flex: 1; }
+.assignment-panel-heading h2 { margin: 2px 0; font-size: 23px; }
+.assignment-panel-heading p { margin: 0; color: #4b5563; font-size: 14px; }
+.assignment-detail-facts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; border-top: 2px solid var(--black); padding-top: 14px; }
+.assignment-detail-facts > div,.assignment-mini-grid > div { display: grid; gap: 3px; overflow-wrap: anywhere; }
+.assignment-detail-facts small,.assignment-mini-grid small { color: #4b5563; font-size: 11px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.assignment-detail-facts span,.assignment-mini-grid span { font-size: 13px; }
+.assignment-stops h2,.assignment-action-panel h2,.volunteer-otp-form h2 { margin: 0; font-size: 25px; }
+.assignment-stop { display: grid; gap: 4px; border-left: 5px solid var(--forest); padding: 4px 0 4px 12px; }
+.assignment-stop > span { font-size: 10px; font-weight: 900; letter-spacing: .1em; }
+.assignment-stop > small { font-size: 13px; }
+.pickup-stop { border-color: var(--orange); }
+.delivery-stop { border-color: var(--forest); }
+.assignment-milestones { border-top: 2px solid var(--black); }
+.assignment-milestones p { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; border-bottom: 1px solid #d1d5db; padding: 9px 0; font-size: 13px; }
+.assignment-action-panel { background: var(--yellow); }
+.assignment-action-panel p { margin: 0; }
+.assignment-buttons { display: flex; flex-wrap: wrap; gap: 10px; }
+.volunteer-otp-form { background: var(--lilac); }
+.volunteer-otp-form > p,.volunteer-otp-form > small { margin: 0; }
+.otp-input { max-width: 250px; font-size: 22px; font-weight: 900; letter-spacing: .28em; text-align: center; }
+.volunteer-otp-form > .button { width: fit-content; }
+.assignment-cancel-button { width: fit-content; }
+.assignment-panel { background: #f8faf3; }
+.assignment-mini-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; border-block: 2px solid var(--black); padding: 12px 0; }
+.assignment-hint { margin: 0; border-left: 4px solid var(--forest); padding: 8px 11px; background: var(--white); font-size: 14px; }
+.dev-otp-control { display: grid; justify-items: start; gap: 8px; border: 2px dashed var(--black); padding: 12px; background: var(--yellow); }
+.dev-otp-control > span { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 900; }
+.dev-otp-control > small { font-size: 12px; }
+.dev-code { border: 2px solid var(--black); padding: 6px 12px; background: var(--white); font-size: 25px; font-weight: 900; letter-spacing: .24em; }
+.availability-toggle { display: flex; align-items: center; gap: 11px; border: 2px solid var(--black); padding: 12px; background: var(--cream); cursor: pointer; }
+.availability-toggle input { width: 21px; height: 21px; accent-color: var(--forest); }
+.availability-toggle span { display: grid; }
+.availability-toggle small { color: #4b5563; }
 .donor-empty-workspace { background: var(--white); }
 .donor-empty-workspace .empty-state { min-height: 220px; background: var(--cream); }
 
@@ -560,6 +611,7 @@ mark { display: inline; padding: 0 .12em .04em; color: var(--black); background:
   .stat-grid, .donor-stat-grid { gap: 11px; }
   .stat-card { padding: 14px; }
   .donation-grid, .reservation-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .assignment-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
 @media (max-width: 760px) {
   .landing-nav { min-height: 68px; padding: 9px 16px; }
@@ -590,6 +642,11 @@ mark { display: inline; padding: 0 .12em .04em; color: var(--black); background:
   .footer-bottom { flex-direction: column; }
   .auth-page { display: block; }
   .donation-grid, .reservation-grid, .donation-detail-grid { grid-template-columns: 1fr; }
+  .assignment-grid,.assignment-detail-grid { grid-template-columns: 1fr; }
+  .assignment-mini-grid { grid-template-columns: 1fr; }
+  .volunteer-profile-card { align-items: flex-start; flex-wrap: wrap; }
+  .volunteer-profile-card > div { min-width: calc(100% - 70px); }
+  .volunteer-profile-card > .outline-button { width: 100%; justify-content: center; }
   .donation-form-footer { align-items: stretch; flex-direction: column-reverse; }
   .donation-form-footer > * { width: 100%; justify-content: center; }
   .detail-meta-grid { grid-template-columns: 1fr; }

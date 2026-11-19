@@ -27,7 +27,10 @@ const navByRole: Record<UserRole, NavGroup[]> = {
   ] }],
   volunteer: [{ label: 'VOLUNTEER SPACE', items: [
     { label: 'Overview', to: '/dashboard/volunteer', icon: <Activity size={17} /> },
+    { label: 'Available tasks', to: '/dashboard/volunteer/available', icon: <Truck size={17} /> },
     { label: 'Assigned tasks', to: '/dashboard/volunteer/tasks', icon: <ClipboardList size={17} /> },
+    { label: 'Profile & availability', to: '/dashboard/volunteer/profile', icon: <Settings size={17} /> },
+    { label: 'Completed tasks', to: '/dashboard/volunteer/completed', icon: <Check size={17} /> },
     { label: 'Task history', to: '/dashboard/volunteer/history', icon: <PackageCheck size={17} /> },
   ] }],
   admin: [
@@ -192,7 +195,7 @@ export function NgoDashboard() {
   </div>;
 }
 
-interface VolunteerProfile { city: string; pincode: string; is_available: boolean }
+interface VolunteerProfile { city: string; locality: string; pincode: string; is_available: boolean }
 export function VolunteerDashboard() {
   const { user } = useAuth();
   const [profile, setProfile] = useState<VolunteerProfile | null>(null);
@@ -208,8 +211,8 @@ export function VolunteerDashboard() {
   if (loading) return <DashboardSkeleton />;
   return <div className="page-content"><PageHeader eyebrow="VOLUNTEER WORKSPACE" title={<>Welcome, <span className="welcome-name">{user!.fullName.split(' ')[0]}</span></>} description="Your volunteer profile and service area." actions={profile && <StatusBadge status={profile.is_available ? 'active' : 'inactive'} label={profile.is_available ? 'Available' : 'Unavailable'} />} />
     {error && <ErrorNotice message={error} onRetry={() => void load()} />}
-    {profile && <section className="dashboard-card volunteer-profile-card"><span className="volunteer-avatar-large"><Truck size={23} /></span><div><span className="eyebrow">YOUR SERVICE AREA</span><h2>{profile.city}</h2><p>Pincode {profile.pincode} · Availability is stored in your volunteer profile.</p></div></section>}
-    <div className="workspace-section-grid"><ComingSoonPanel title="Assigned tasks" description="No task assignment API is connected yet. No pickup has been assigned to you." features={['Donor and recipient pickup details', 'Collection deadline', 'OTP confirmation once implemented']} /><ComingSoonPanel title="Completed deliveries" description="Task history will appear once volunteer assignments and delivery verification are available." features={['Completed pickup and delivery records', 'Delivery history']} /></div>
+    {profile && <section className="dashboard-card volunteer-profile-card"><span className="volunteer-avatar-large"><Truck size={23} /></span><div><span className="eyebrow">YOUR SERVICE AREA</span><h2>{profile.city}</h2><p>{profile.locality} · Pincode {profile.pincode} · {profile.is_available ? 'Available for new tasks' : 'Not accepting new tasks'}</p></div><Link className="outline-button" to="/dashboard/volunteer/profile">Edit profile</Link></section>}
+    <div className="quick-action-grid"><Link className="feature-action" to="/dashboard/volunteer/available"><span><Truck size={19}/></span><strong>Available tasks</strong><small>See local volunteer offers that match your service area.</small><em>Browse tasks <ArrowRight size={14}/></em></Link><Link className="feature-action" to="/dashboard/volunteer/tasks"><span><ClipboardList size={19}/></span><strong>Assigned tasks</strong><small>Continue pickup and delivery verification.</small><em>Open tasks <ArrowRight size={14}/></em></Link><Link className="feature-action" to="/dashboard/volunteer/history"><span><PackageCheck size={19}/></span><strong>Completed tasks</strong><small>Review deliveries you verified.</small><em>View history <ArrowRight size={14}/></em></Link></div>
   </div>;
 }
 

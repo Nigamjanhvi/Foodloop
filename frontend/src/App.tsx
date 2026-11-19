@@ -10,6 +10,7 @@ import { DashboardFrame, DonorDashboard, NgoDashboard, VolunteerDashboard } from
 import { ComingSoonPanel, PageHeader } from './components/ui';
 import type { UserRole } from './auth/AuthContext';
 import { AdminDonationManagementPage, AdminReservationManagementPage, CreateDonationPage, DonorDonationsPage, DonorReservationRequestsPage, DonationDetailsPage, FoodDiscoveryPage, RecipientReservationsPage, ReservationDetailsPage } from './donations/DonationPages';
+import { VolunteerAssignmentDetailsPage, VolunteerProfilePage, VolunteerTasksPage } from './assignments/AssignmentPages';
 
 function DashboardRedirect() {
   const { user } = useAuth();
@@ -44,10 +45,10 @@ function AppRoutes() {
           <Route path="available/:id" element={<DonationDetailsPage />} />
           <Route path="reservations" element={<RecipientReservationsPage />} />
           <Route path="reservations/:id" element={<ReservationDetailsPage />} />
-          <Route path="tracking" element={<RoleFuturePage role="ngo" title="Pickup and delivery" description="Volunteer pickup and delivery tracking belongs to Phase 4." features={['Pickup details', 'Volunteer assignment', 'Delivery confirmation']} />} />
+          <Route path="tracking" element={<Navigate replace to="/dashboard/ngo/reservations" />} />
           <Route path="history" element={<RecipientReservationsPage historyOnly />} />
         </Route>
-        <Route path="/dashboard/volunteer" element={<RequireAuth roles={['volunteer']} />}><Route index element={<VolunteerDashboard />} /><Route path="tasks" element={<RoleFuturePage role="volunteer" title="Assigned tasks" description="Volunteer assignments will appear after donation and pickup workflows exist." features={['Pickup location and deadline', 'Donor and recipient contact', 'OTP verification']} />} /><Route path="history" element={<RoleFuturePage role="volunteer" title="Task history" description="Completed volunteer assignments backed by saved delivery records." features={['Completed tasks', 'Pickup and delivery timestamps']} />} /></Route>
+        <Route path="/dashboard/volunteer" element={<RequireAuth roles={['volunteer']} />}><Route index element={<VolunteerDashboard />} /><Route path="profile" element={<VolunteerProfilePage />} /><Route path="available" element={<VolunteerTasksPage view="available" />} /><Route path="tasks" element={<VolunteerTasksPage view="active" />} /><Route path="tasks/:id" element={<VolunteerAssignmentDetailsPage />} /><Route path="completed" element={<VolunteerTasksPage view="completed" />} /><Route path="history" element={<VolunteerTasksPage view="all" />} /></Route>
         <Route path="/dashboard/admin" element={<RequireAuth roles={['admin']} />}>
           <Route index element={<AdminOverview />} />
           <Route path="organizations" element={<OrganizationReviewPage />} />

@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Building2, Check, Clock3, Filter, MapPin, Packag
 import { api } from '../api/client';
 import { errorMessage } from '../auth/AuthContext';
 import { ComingSoonPanel, ConfirmDialog, EmptyState, ErrorNotice, LoadingState, PageHeader, Pagination, StatusBadge, Toast } from '../components/ui';
+import { ReservationAssignmentPanel } from '../assignments/AssignmentPages';
 
 type DonationStatus = 'available' | 'partially_reserved' | 'fully_reserved' | 'expired' | 'cancelled' | 'reserved' | 'completed';
 interface Donation {
@@ -270,5 +271,5 @@ export function ReservationDetailsPage() {
   if (loading) return <LoadingState label="Loading reservation details…" />;
   if (error) return <ErrorNotice message={error} />;
   if (!reservation) return null;
-  return <div className="page-content"><PageHeader eyebrow="RESERVATION RECORD" title={reservation.food_name} description={`${reservation.quantity} ${unitLabels[reservation.unit] ?? reservation.unit} · requested ${formatDate(reservation.created_at)}`} actions={<StatusBadge status={reservation.status} />} breadcrumbs={[{ label: 'Reservations', to: location.pathname.includes('/admin/') ? '/dashboard/admin/reservations' : location.pathname.includes('/ngo/') ? '/dashboard/ngo/reservations' : '/dashboard/donor/reservations' }, { label: 'Details' }]} /><ReservationCard reservation={reservation} mode="admin" readOnly /><Link className="outline-button" to={location.pathname.includes('/admin/') ? '/dashboard/admin/reservations' : location.pathname.includes('/ngo/') ? '/dashboard/ngo/reservations' : '/dashboard/donor/reservations'}><ArrowLeft size={17} /> Back to reservations</Link></div>;
+  return <div className="page-content"><PageHeader eyebrow="RESERVATION RECORD" title={reservation.food_name} description={`${reservation.quantity} ${unitLabels[reservation.unit] ?? reservation.unit} · requested ${formatDate(reservation.created_at)}`} actions={<StatusBadge status={reservation.status} />} breadcrumbs={[{ label: 'Reservations', to: location.pathname.includes('/admin/') ? '/dashboard/admin/reservations' : location.pathname.includes('/ngo/') ? '/dashboard/ngo/reservations' : '/dashboard/donor/reservations' }, { label: 'Details' }]} /><ReservationCard reservation={reservation} mode="admin" readOnly />{!location.pathname.includes('/admin/')&&<ReservationAssignmentPanel reservationId={id} reservationStatus={reservation.status}/>}<Link className="outline-button" to={location.pathname.includes('/admin/') ? '/dashboard/admin/reservations' : location.pathname.includes('/ngo/') ? '/dashboard/ngo/reservations' : '/dashboard/donor/reservations'}><ArrowLeft size={17} /> Back to reservations</Link></div>;
 }

@@ -42,8 +42,8 @@ export async function createAccount(pool: Pool, input: {
     }
     if (input.volunteerLocation) {
       await client.query(
-        'INSERT INTO volunteer_profiles (user_id, city, pincode) VALUES ($1, $2, $3)',
-        [row.id, input.volunteerLocation.city, input.volunteerLocation.pincode],
+        'INSERT INTO volunteer_profiles (user_id, city, locality, pincode) VALUES ($1, $2, $3, $4)',
+        [row.id, input.volunteerLocation.city, input.volunteerLocation.locality, input.volunteerLocation.pincode],
       );
     }
     await client.query('COMMIT');
@@ -60,7 +60,7 @@ export async function createAccount(pool: Pool, input: {
   }
 }
 
-export async function authenticateAccount(pool: Pool, email: string, phone: string, password: string, secret: string) {
+export async function authenticateAccount(pool: Pool, email: string, password: string, secret: string) {
   const result = await pool.query(
     `SELECT u.id, u.email, u.phone, u.phone_e164, u.full_name, u.password_hash, u.role,
             o.id AS organization_id, o.name AS organization_name, o.verification_status, o.verification_note
@@ -73,12 +73,6 @@ export async function authenticateAccount(pool: Pool, email: string, phone: stri
     throw new ApiError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect.');
   }
   const row = result.rows[0];
-  if (!row.phone && !row.phone_e164) {
-    throw new ApiError(428, 'PHONE_ENROLLMENT_REQUIRED', 'Add a contact phone to this account before signing in.');
-  }
-  if (!matchesPhone(row.phone_e164, row.phone, phone)) {
-    throw new ApiError(401, 'INVALID_CREDENTIALS', 'Email, phone number, or password is incorrect.');
-  }
   const user: AuthUser = {
     id: row.id, email: row.email, phone: row.phone_e164 ?? row.phone, fullName: row.full_name, role: row.role,
     ...(row.organization_id ? {
@@ -121,7 +115,7 @@ export async function enrollLegacyPhone(pool: Pool, input: { email: string; phon
     }
     throw error;
   } finally { client.release(); }
-  return authenticateAccount(pool, input.email, input.phone, input.password, secret);
+  return authenticateAccount(pool, input.email, input.password, secret);
 }
 
 async function assertPhoneAvailable(client: PoolClient, phone: string, excludeUserId?: string) {

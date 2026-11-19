@@ -18,7 +18,7 @@ export interface CurrentUser {
 interface AuthContextValue {
   user: CurrentUser | null;
   loading: boolean;
-  login(email: string, phone: string, password: string): Promise<void>;
+  login(email: string, password: string): Promise<void>;
   enrollPhone(email: string, phone: string, password: string): Promise<void>;
   register(payload: Record<string, unknown>): Promise<void>;
   logout(): void;
@@ -44,8 +44,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
   }
 
-  async function login(email: string, phone: string, password: string) {
-    const { data } = await api.post<{ data: { token: string; user: CurrentUser } }>('/auth/login', { email, phone, password });
+  async function login(email: string, password: string) {
+    const { data } = await api.post<{ data: { token: string; user: CurrentUser } }>('/auth/login', { email, password });
     acceptSession(data.data);
   }
 

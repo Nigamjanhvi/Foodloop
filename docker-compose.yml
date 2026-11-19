@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: foodloop
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-foodloop_dev_password}
     ports:
-      - "5432:5432"
+      - "${FOODLOOP_DB_HOST_PORT:-5432}:5432"
     volumes:
       - foodloop_pgdata:/var/lib/postgresql/data
       - ./database/migrations:/docker-entrypoint-initdb.d:ro

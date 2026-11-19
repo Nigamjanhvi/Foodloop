@@ -35,11 +35,10 @@ export const registerSchema = z.object({
 
 export const loginSchema = z.object({
   email: z.string().trim().email().max(254),
-  phone: phoneSchema,
-  password: z.string().min(1).max(128),
+  password: z.string().min(6).max(128),
 });
 
-export const phoneEnrollmentSchema = loginSchema;
+export const phoneEnrollmentSchema = loginSchema.extend({ phone: phoneSchema });
 
 export const verificationSchema = z.object({
   status: z.enum(['verified', 'rejected']),
