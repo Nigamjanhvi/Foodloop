@@ -83,8 +83,10 @@ export function createAssignmentRouter(pool: Pool, jwtSecret: string) {
         if (!result.rowCount || result.rows[0].recipient_organization_id !== recipient.id) throw new ApiError(404, 'RESERVATION_NOT_FOUND', 'Reservation was not found for your organization.');
         const reservation = result.rows[0];
         if (!['accepted', 'approved'].includes(reservation.status)) throw new ApiError(409, 'RESERVATION_NOT_ACCEPTED', 'Volunteer assistance is available only for an accepted reservation.');
-        if (reservation.status === 'delivered' || ['cancelled', 'expired', 'rejected'].includes(reservation.status)
-          || reservation.donation_status === 'expired' || new Date(reservation.collection_deadline) <= new Date()) {
+        if (reservation.donation_status === 'expired' || new Date(reservation.collection_deadline) <= new Date()) {
+          throw new ApiError(409, 'COLLECTION_DEADLINE_PASSED', 'The collection deadline has passed. Volunteer assistance can only be requested before the pickup deadline.');
+        }
+        if (reservation.status === 'delivered' || ['cancelled', 'expired', 'rejected'].includes(reservation.status)) {
           throw new ApiError(409, 'RESERVATION_UNAVAILABLE', 'This reservation can no longer receive volunteer assistance.');
         }
         const existing = await client.query(`SELECT id FROM reservation_assignments WHERE reservation_id=$1

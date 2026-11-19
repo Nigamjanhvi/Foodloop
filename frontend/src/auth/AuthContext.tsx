@@ -77,7 +77,7 @@ export function useAuth() {
 export function errorMessage(error: unknown) {
   if (axios.isAxiosError<ApiErrorBody>(error)) {
     const details = error.response?.data?.error?.details;
-    if (details?.length) return details.map((item) => item.message).join(' ');
+    if (details?.length) return details.map((item) => `${item.field.replaceAll('_', ' ')}: ${item.message}`).join(' ');
     return error.response?.data?.error?.message ?? 'We could not reach FoodLoop. Check your connection and try again.';
   }
   return 'Something went wrong. Please try again.';
