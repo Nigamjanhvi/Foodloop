@@ -10,7 +10,11 @@
     "start": "npm run start --workspace backend",
     "db:migrate": "npm run db:migrate --workspace backend",
     "db:seed-admin": "npm run db:seed-admin --workspace backend",
+    "notifications:worker": "npm run notifications:worker --workspace backend",
     "test": "npm run test --workspace backend"
   },
-  "devDependencies": { "concurrently": "^9.2.1" }
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "es-toolkit": "^1.39.3"
+  }
 }

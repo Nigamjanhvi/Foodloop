@@ -1,4 +1,4 @@
-import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import type { Pool, PoolClient } from 'pg';
@@ -253,6 +253,13 @@ export function createAssignmentRouter(pool: Pool, jwtSecret: string) {
     } catch (error) { next(error); }
   });
 
+  router.post('/assignments/:id/pickup-otp/issue', developmentCodeLimiter, requireRoles('donor'), async (request,response,next)=>{
+    try{const result=await issueOtp(pool,jwtSecret,parseId(request.params.id),request.auth!.id,'pickup');response.json({data:result});}catch(error){next(error);}
+  });
+  router.post('/assignments/:id/delivery-otp/issue', developmentCodeLimiter, requireRoles('ngo'), async (request,response,next)=>{
+    try{const result=await issueOtp(pool,jwtSecret,parseId(request.params.id),request.auth!.id,'delivery');response.json({data:result});}catch(error){next(error);}
+  });
+
   router.post('/assignments/:id/pickup-otp/verify', otpLimiter, requireRoles('volunteer'), async (request, response, next) => {
     try {
       const id = parseId(request.params.id); const { code } = otpSchema.parse(request.body);
@@ -344,6 +351,36 @@ async function issueDevelopmentOtp(pool: Pool, secret: string, id: string, userI
     await client.query(`UPDATE reservation_assignments SET ${hashColumn}=$1,${expiryColumn}=$2,${attemptsColumn}=0,updated_at=NOW() WHERE id=$3`, [hash,expiresAt,id]);
     return { id, code, expires_at: expiresAt.toISOString(), development_only: true, recipient: orgType };
   });
+}
+
+async function issueOtp(pool:Pool,secret:string,id:string,userId:string,kind:'pickup'|'delivery'){
+  const key=Buffer.from(process.env.NOTIFICATION_ENCRYPTION_KEY??'','base64');
+  if(key.length!==32)throw new ApiError(503,'OTP_EMAIL_NOT_CONFIGURED','Secure OTP email delivery is not configured. Contact the administrator.');
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const result=await client.query(`SELECT a.*,r.recipient_organization_id,d.donor_organization_id,d.food_name,
+      v.email AS volunteer_email,v.is_active AS volunteer_active
+      FROM reservation_assignments a JOIN reservations r ON r.id=a.reservation_id
+      JOIN donations d ON d.id=r.donation_id LEFT JOIN users v ON v.id=a.volunteer_user_id
+      WHERE a.id=$1 FOR UPDATE OF a`,[id]);
+    if(!result.rowCount)throw new ApiError(404,'ASSIGNMENT_NOT_FOUND','Assignment was not found.');
+    const row=result.rows[0];const organizationId=kind==='pickup'?row.donor_organization_id:row.recipient_organization_id;
+    const organization=await client.query('SELECT owner_user_id,verification_status FROM organizations WHERE id=$1',[organizationId]);
+    if(organization.rows[0]?.owner_user_id!==userId)throw new ApiError(403,'FORBIDDEN','Only the associated organization can issue this code.');
+    if(organization.rows[0].verification_status!=='verified')throw new ApiError(403,'ORGANIZATION_NOT_VERIFIED','Organization verification is required.');
+    if((kind==='pickup'&&row.status!=='accepted')||(kind==='delivery'&&row.status!=='picked_up'))throw new ApiError(409,'INVALID_ASSIGNMENT_STATE',`A ${kind} code is unavailable at this assignment stage.`);
+    if(!row.volunteer_user_id||!row.volunteer_active||!row.volunteer_email)throw new ApiError(409,'VOLUNTEER_NOT_ASSIGNED','An active assigned volunteer is required before sending a code.');
+    const code=generateOtp();const expiresAt=new Date(Date.now()+10*60_000);
+    const hashColumn=kind==='pickup'?'pickup_otp_hash':'delivery_otp_hash';const expiryColumn=kind==='pickup'?'pickup_otp_expires_at':'delivery_otp_expires_at';const attemptsColumn=kind==='pickup'?'pickup_attempt_count':'delivery_attempt_count';
+    await client.query(`UPDATE reservation_assignments SET ${hashColumn}=$1,${expiryColumn}=$2,${attemptsColumn}=0,updated_at=NOW() WHERE id=$3`,[hashOtp(secret,id,kind,code),expiresAt,id]);
+    const iv=randomBytes(12);const cipher=createCipheriv('aes-256-gcm',key,iv);const clear=Buffer.from(JSON.stringify({subject:`FoodLoop ${kind} verification code`,text:`Your ${kind} verification code for ${row.food_name} is ${code}. It expires in 10 minutes. Do not share it with anyone except the authorized FoodLoop volunteer at handoff.`}));
+    const ciphertext=Buffer.concat([cipher.update(clear),cipher.final()]);const protectedPayload={algorithm:'aes-256-gcm',iv:iv.toString('base64'),auth_tag:cipher.getAuthTag().toString('base64'),ciphertext:ciphertext.toString('base64')};
+    await client.query(`INSERT INTO notification_queue(recipient_email,recipient_user_id,event_type,subject,body,delivery_payload,status,attempts,max_attempts,next_attempt_at,updated_at,idempotency_key)
+      VALUES($1,$2,$3,$4,'',$5::jsonb,'pending',0,$6,NOW(),NOW(),$7)`,[row.volunteer_email,row.volunteer_user_id,`otp.${kind}`,`FoodLoop ${kind} verification code`,JSON.stringify(protectedPayload),Number(process.env.NOTIFICATION_MAX_ATTEMPTS??8),`otp:${id}:${kind}:${expiresAt.getTime()}`]);
+    await client.query('COMMIT');
+    return {assignment:{id,status:row.status,expires_at:expiresAt.toISOString()},delivery:'email_queued',development_only:false};
+  }catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}finally{client.release();}
 }
 
 type VerifyOutcome = { error?: { status: number; code: string; message: string }; assignment?: Record<string, unknown> };

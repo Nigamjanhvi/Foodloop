@@ -10,6 +10,7 @@ import { authenticateAccount, createAccount, createOrganization, enrollLegacyPho
 import { createDonationRouter } from './donations/routes.js';
 import { createAssignmentRouter } from './assignments/routes.js';
 import { ApiError } from './http/errors.js';
+import { createPhase5Router, EventHub } from './notifications/routes.js';
 
 const pageQuery = { page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(50).default(10) };
 const organizationAdminQuerySchema = z.object({
@@ -201,6 +202,9 @@ export function createApp(pool: Pool, jwtSecret: string) {
 
   app.use('/api/v1', createDonationRouter(pool, jwtSecret));
   app.use('/api/v1', createAssignmentRouter(pool, jwtSecret));
+  const eventHub = new EventHub(pool,jwtSecret);
+  app.use('/api/v1', createPhase5Router(pool, jwtSecret, eventHub));
+  app.locals.eventHub = eventHub;
 
   const errors: ErrorRequestHandler = (error, _request, response, _next) => {
     if (error instanceof ZodError) {

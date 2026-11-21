@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import { errorMessage } from '../auth/AuthContext';
 import { ComingSoonPanel, ConfirmDialog, EmptyState, ErrorNotice, LoadingState, PageHeader, Pagination, StatusBadge, Toast } from '../components/ui';
 import { ReservationAssignmentPanel } from '../assignments/AssignmentPages';
+import { useFoodLoopEvent } from '../realtime/useFoodLoopRealtime';
 
 type DonationStatus = 'available' | 'partially_reserved' | 'fully_reserved' | 'expired' | 'cancelled' | 'reserved' | 'completed';
 interface Donation {
@@ -54,6 +55,7 @@ function useQueryPage<T>(url: string, dependencies: unknown[]): { data: PageData
   // dependencyKey intentionally represents the query values in a stable scalar.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, dependencyKey, revision]);
+  useFoodLoopEvent(['donation.created','donation.cancelled','donation.expired','reservation.created','reservation.accepted','reservation.rejected','reservation.cancelled','reservation.picked_up','reservation.delivered','assignment.offered','assignment.accepted','assignment.cancelled','assignment.picked_up','assignment.delivered'],()=>setRevision((value)=>value+1));
   return { data, loading, error, refresh: () => setRevision((value) => value + 1) };
 }
 
@@ -217,6 +219,7 @@ export function DonationDetailsPage() {
   const [values, setValues] = useState<Record<string, string>>({}); const [confirmCancel, setConfirmCancel] = useState(false); const [toast, setToast] = useState('');
   async function load() { setLoading(true); setError(''); try { const { data } = await api.get<{ data: { donation: Donation } }>(`/donations/${id}`); setDonation(data.data.donation); setValues(donationToForm(data.data.donation)); } catch (failure) { setError(errorMessage(failure)); } finally { setLoading(false); } }
   useEffect(() => { void load(); }, [id]);
+  useFoodLoopEvent(['donation.created','donation.cancelled','donation.expired','reservation.created','reservation.accepted','reservation.rejected','reservation.cancelled','reservation.picked_up','reservation.delivered'],()=>void load());
   async function reserve(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError(''); if (!event.currentTarget.checkValidity()) { setError('Enter a valid quantity no greater than the available amount.'); return; }
     setBusy(true); try { const { data } = await api.post(`/donations/${id}/reservations`, { quantity: Number(quantity), message }); navigate('/dashboard/ngo/reservations', { state: { created: data.data.reservation.id } }); }
@@ -268,6 +271,7 @@ export function AdminDonationManagementPage() {
 export function ReservationDetailsPage() {
   const { id = '' } = useParams(); const location = useLocation(); const [reservation, setReservation] = useState<Reservation | null>(null); const [error, setError] = useState(''); const [loading, setLoading] = useState(true);
   useEffect(() => { api.get<{ data: { reservation: Reservation } }>(`/reservations/${id}`).then(({ data }) => setReservation(data.data.reservation)).catch((failure) => setError(errorMessage(failure))).finally(() => setLoading(false)); }, [id]);
+  useFoodLoopEvent(['reservation.created','reservation.accepted','reservation.rejected','reservation.cancelled','reservation.picked_up','reservation.delivered','assignment.offered','assignment.accepted','assignment.cancelled','assignment.picked_up','assignment.delivered'],()=>{setLoading(true);api.get<{data:{reservation:Reservation}}>(`/reservations/${id}`).then(({data})=>setReservation(data.data.reservation)).catch((failure)=>setError(errorMessage(failure))).finally(()=>setLoading(false));});
   if (loading) return <LoadingState label="Loading reservation details…" />;
   if (error) return <ErrorNotice message={error} />;
   if (!reservation) return null;

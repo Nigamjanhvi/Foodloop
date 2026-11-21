@@ -6,11 +6,14 @@ import RegistrationFlow from './auth/RegistrationFlow';
 import { RequireAuth } from './auth/RequireAuth';
 import LandingPage from './LandingPage';
 import { AdminComingSoonPage, AdminOverview, AdminUsersPage, AccessTrustPage, OrganizationReviewPage } from './dashboard/AdminPages';
+import { AdminNotificationMonitorPage } from './notifications/AdminNotificationMonitorPage';
+import { AdminAnalyticsPage } from './dashboard/AnalyticsPages';
 import { DashboardFrame, DonorDashboard, NgoDashboard, VolunteerDashboard } from './dashboard/Dashboard';
 import { ComingSoonPanel, PageHeader } from './components/ui';
 import type { UserRole } from './auth/AuthContext';
 import { AdminDonationManagementPage, AdminReservationManagementPage, CreateDonationPage, DonorDonationsPage, DonorReservationRequestsPage, DonationDetailsPage, FoodDiscoveryPage, RecipientReservationsPage, ReservationDetailsPage } from './donations/DonationPages';
 import { VolunteerAssignmentDetailsPage, VolunteerProfilePage, VolunteerTasksPage } from './assignments/AssignmentPages';
+import NotificationPage from './notifications/NotificationPage';
 
 function DashboardRedirect() {
   const { user } = useAuth();
@@ -37,7 +40,7 @@ function AppRoutes() {
           <Route path="reservations" element={<DonorReservationRequestsPage />} />
           <Route path="reservations/:id" element={<ReservationDetailsPage />} />
           <Route path="history" element={<DonorDonationsPage historyOnly />} />
-          <Route path="notifications" element={<RoleFuturePage role="donor" title="Notifications" description="Donor updates from the FoodLoop platform." features={['Organization status', 'Reservation updates', 'Delivery completion']} />} />
+          <Route path="notifications" element={<NotificationPage />} />
         </Route>
         <Route path="/dashboard/ngo" element={<RequireAuth roles={['ngo']} />}>
           <Route index element={<NgoDashboard />} />
@@ -47,20 +50,22 @@ function AppRoutes() {
           <Route path="reservations/:id" element={<ReservationDetailsPage />} />
           <Route path="tracking" element={<Navigate replace to="/dashboard/ngo/reservations" />} />
           <Route path="history" element={<RecipientReservationsPage historyOnly />} />
+          <Route path="notifications" element={<NotificationPage />} />
         </Route>
-        <Route path="/dashboard/volunteer" element={<RequireAuth roles={['volunteer']} />}><Route index element={<VolunteerDashboard />} /><Route path="profile" element={<VolunteerProfilePage />} /><Route path="available" element={<VolunteerTasksPage view="available" />} /><Route path="tasks" element={<VolunteerTasksPage view="active" />} /><Route path="tasks/:id" element={<VolunteerAssignmentDetailsPage />} /><Route path="completed" element={<VolunteerTasksPage view="completed" />} /><Route path="history" element={<VolunteerTasksPage view="all" />} /></Route>
+        <Route path="/dashboard/volunteer" element={<RequireAuth roles={['volunteer']} />}><Route index element={<VolunteerDashboard />} /><Route path="profile" element={<VolunteerProfilePage />} /><Route path="available" element={<VolunteerTasksPage view="available" />} /><Route path="tasks" element={<VolunteerTasksPage view="active" />} /><Route path="tasks/:id" element={<VolunteerAssignmentDetailsPage />} /><Route path="completed" element={<VolunteerTasksPage view="completed" />} /><Route path="history" element={<VolunteerTasksPage view="all" />} /><Route path="notifications" element={<NotificationPage />} /></Route>
         <Route path="/dashboard/admin" element={<RequireAuth roles={['admin']} />}>
           <Route index element={<AdminOverview />} />
           <Route path="organizations" element={<OrganizationReviewPage />} />
           <Route path="users" element={<AdminUsersPage />} /><Route path="donors" element={<AdminUsersPage />} /><Route path="ngos" element={<AdminUsersPage />} /><Route path="volunteers" element={<AdminUsersPage />} />
           <Route path="trust" element={<AccessTrustPage />} />
+          <Route path="activity" element={<NotificationPage />} />
+          <Route path="notifications" element={<AdminNotificationMonitorPage />} />
           <Route path="donations" element={<AdminDonationManagementPage />} />
           <Route path="donations/:id" element={<DonationDetailsPage />} />
           <Route path="reservations" element={<AdminReservationManagementPage />} />
           <Route path="reservations/:id" element={<ReservationDetailsPage />} />
           <Route path="tasks" element={<AdminComingSoonPage title="Volunteer task management" description="Manage assigned pickup and delivery tasks." features={['Volunteer assignments', 'Pickup progress', 'OTP delivery checks']} />} />
-          <Route path="notifications" element={<AdminComingSoonPage title="Notification operations" description="Monitor real notification queue records when the worker is implemented." features={['Queued messages', 'Retry attempts', 'Delivery failures']} />} />
-          <Route path="analytics" element={<AdminComingSoonPage title="Reports and analytics" description="Analytics will appear only when real donation and delivery records exist." features={['Monthly donations', 'Food successfully delivered', 'Locality trends']} />} />
+          <Route path="analytics" element={<AdminAnalyticsPage />} />
           <Route path="devops" element={<AdminComingSoonPage title="DevOps Control Center" description="No CI/CD, AWS, Docker health, or Nagios integration is connected yet." features={['Pipeline status', 'Deployment version', 'Host and service monitoring']} />} />
           <Route path="settings" element={<AdminComingSoonPage title="Platform settings" description="Administrative settings are not implemented yet." features={['Platform configuration', 'Account preferences']} />} />
         </Route>

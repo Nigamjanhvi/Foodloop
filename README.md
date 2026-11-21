@@ -1,110 +1,107 @@
-# FoodLoop
+﻿# FoodLoop
 
-FoodLoop is a community food rescue platform that helps local food donors connect surplus meals with nearby recipient organizations and volunteers. It is being developed as a phased full stack and DevOps project. The repository includes the application foundation, account and organization workflows, an admin review center, and redesigned role dashboards. Donation, reservation, volunteer task assignment, notification, analytics, and DevOps workflows remain planned and are shown as unavailable until implemented.
+FoodLoop is a community food rescue app connecting verified food donors, recipient organizations, and local volunteers. It uses React, Express, PostgreSQL, and transactional database records for donations, reservations, pickup, delivery, notifications, and impact reporting.
+
+## Current implementation
+
+- **Phase 1:** React 19, TypeScript, Vite, Express 5, PostgreSQL, migrations, local database Compose service, health endpoint.
+- **Phase 2:** bcrypt authentication, JWT sessions, donor/NGO/volunteer/admin roles, protected routes, organization registration and admin verification.
+- **Phase 3:** donation listings, saved service-area matching, reservations, status transitions, quantity locking, expiry processing, admin inspection.
+- **Phase 4:** volunteer profiles and availability, assignment offers, acceptance/rejection, hashed pickup and delivery OTPs, attempt limits, delivery records.
+- **Phase 5:** transactional notification records, SMTP worker and retry queue, encrypted OTP email payloads, in-app notification center, authenticated replayable SSE, admin notification operations, PostgreSQL analytics.
+
+The repository does not include a production deployment or paid cloud infrastructure. The web app remains usable if SSE is offline; data can still be fetched through its normal API routes.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  Browser[React + Vite] -->|REST /api| API[Express API]
-  API --> DB[(PostgreSQL on RDS in production)]
-  API --> Queue[(Notification queue in PostgreSQL)]
-  CI[GitHub Actions] --> Registry[ECR]
-  Registry --> Host[EC2 Docker Compose + Nginx]
-  Host --> API
-  Host --> Monitor[Nagios Core]
-  TF[Terraform] --> AWS[AWS VPC, EC2, ECR, RDS, IAM]
-  Puppet[Puppet] --> Host
-  Ansible[Ansible] --> Host
+  UI[React dashboards] -->|REST with bearer JWT| API[Express API]
+  UI <-->|Authenticated fetch stream with Last-Event-ID| SSE[Authenticated SSE endpoint]
+  API -->|business transaction + event records| DB[(PostgreSQL)]
+  DB -->|durable user scoped events| SSE
+  DB -->|pending email jobs| Worker[Independent email worker]
+  Worker -->|Nodemailer SMTP| Mail[Configured SMTP service]
 ```
 
-The browser talks only to the Express REST API. PostgreSQL is the system of record. In AWS, Terraform provisions the network and managed services; Puppet configures the host baseline; Ansible deploys and rolls back versioned containers; Nginx terminates HTTPS and proxies application traffic; Nagios monitors the host, services, containers, and API health. RDS remains on private subnets. No Kubernetes is planned for version one.
+Business changes and their in-app notifications, durable user events, and ordinary email jobs are created by PostgreSQL triggers within the originating transaction. A rolled-back business change therefore cannot leave a notification or event behind. Events are stored per recipient and the SSE dispatcher polls once per API process, not once per connected browser. The browser sends its JWT in an `Authorization` header and resumes with `Last-Event-ID`; no access token is placed in a URL.
 
-## Repository layout
+## Notification worker
 
-```text
-frontend/                 React, Vite, TypeScript, responsive UI
-backend/                  Express API, PostgreSQL pool, migrations runner
-database/migrations/      Versioned SQL schema
-backend/test/             Isolated PostgreSQL authentication/authorization integration tests
-docker-compose.yml        Local PostgreSQL development service
-terraform/                AWS network and service provisioning (planned)
-puppet/                   Host configuration management (planned)
-ansible/                  Deployment and rollback (planned)
-nagios/                   Nagios Core configuration (planned)
-nginx/                    Reverse proxy and HTTPS configuration (planned)
-docs/                     API, architecture, deployment, and project report (planned)
-.github/workflows/        CI/CD pipeline (planned)
+The API never waits for SMTP. It writes email jobs to the existing `notification_queue`; a separate process claims jobs using `FOR UPDATE SKIP LOCKED`, sends them with Nodemailer, and saves attempts, errors, retry time, and final status. Retry delay grows exponentially and is bounded. Abandoned claims can be recovered. Job idempotency keys prevent duplicate queue records for the same business event.
+
+SMTP delivery is at least once: if the worker crashes after an SMTP server accepts a message but before PostgreSQL records `sent`, a retry can send that email again. The queue keeps a stable `Message-ID` to help downstream systems identify a retry.
+
+Pickup and delivery OTP issuance has dedicated production endpoints. Those endpoints store only the existing HMAC verification hash and put the email copy in an AES-256-GCM protected queue payload. The worker removes the protected payload after successful delivery or when retries are exhausted. Plaintext codes are not returned by production endpoints or written to logs. The existing development-only code display remains available outside production.
+
+## Database
+
+The migration runner applies numbered SQL files under `database/migrations/` in order and records them in `schema_migrations`. Migrations 007 and 008 add notifications, user-scoped replay events, worker state, transactional business event hooks, and admin activity events. They preserve the existing queue and records. Do not edit an applied migration; add a higher numbered migration for schema changes.
+
+## Local development (Windows PowerShell)
+
+Requirements: Node.js, npm, and Docker Desktop with its Linux container engine running.
+
+1. Copy `.env.example` to `.env`; set `JWT_SECRET` to a random value with at least 32 bytes. Never commit `.env`.
+2. Start the existing PostgreSQL service: `docker compose up -d postgres`.
+3. Install dependencies: `npm.cmd install`.
+4. Apply migrations: `npm.cmd run db:migrate`.
+5. Start API and Vite together: `npm.cmd run dev`.
+6. Open `http://localhost:5173`; API health is `http://localhost:4000/api/health`.
+7. Run backend integration tests: `npm.cmd test`.
+
+FoodLoop's example host port is **5434**. Keep `FOODLOOP_DB_HOST_PORT` and `DATABASE_URL` in `.env` aligned. The default compose volume is persistent; do not remove it to fix connection errors.
+
+### Configure SMTP and run the worker
+
+Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_FROM` in the untracked `.env`. For OTP email, also set `NOTIFICATION_ENCRYPTION_KEY` to a base64 encoded 32-byte random key. Generate a key with:
+
+```powershell
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
 ```
 
-## Database model
+Start the worker in a second terminal from the project root:
 
-`users` hold login identities and roles. An `organizations` row belongs to a user and represents a donor or recipient; recipient service areas are recorded in `service_areas`. Donors publish `donations` with location, quantity, handling, and collection deadline. `reservations` link a recipient to a donation and are constrained to one reservation per organization per donation. Volunteer profiles and `reservation_assignments` model pickup and delivery work, including OTP hashes and verification times. `notification_queue` stores durable outbound mail jobs and retry state. Foreign keys, check constraints, unique constraints, and location/deadline indexes are included in the initial migration.
+```powershell
+npm.cmd run notifications:worker
+```
 
-## Local development
+Without valid SMTP settings, the worker exits with a clear error and the admin page reports it as offline. Jobs remain in PostgreSQL for later processing. Do not copy real SMTP or encryption secrets into `.env.example`.
 
-Requirements: Node.js 22 or newer, npm, and Docker Desktop with Docker Compose.
+## Notification and event APIs
 
-1. Copy `.env.example` to `.env`, set a local `DATABASE_URL`, and set `JWT_SECRET` to a random secret of at least 32 bytes. For example, generate one with `node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"`. The included database values are development-only and must not be used in production.
-2. Start PostgreSQL with `docker compose up -d postgres`.
-3. Install workspace dependencies with `npm install`.
-4. Apply all new migrations with `npm run db:migrate`. The migration ledger skips files already applied; the initial migration is safe to re-run against its existing tables and does not delete data.
-5. Start the API and web client with `npm run dev`.
-6. Open `http://localhost:5173`; API health is at `http://localhost:4000/api/health`.
-7. Run the backend integration tests with `npm run test`. Tests create a random temporary PostgreSQL schema, run migrations there, and drop that schema at completion. They do not clear the app's existing tables.
-
-Compose initializes the schema on a new database volume as well. The migration runner is safe to re-run for the current idempotent initial migration. The backend returns HTTP 503 from health when PostgreSQL is unavailable.
-
-## Authentication and organization API
+All routes are under `/api/v1` and retain the existing `{ data: ... }` success and `{ error: ... }` failure response envelopes.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/health` | API process and PostgreSQL health |
-| GET | `/api/v1` | API version discovery |
-| POST | `/api/v1/auth/register` | Register donor, NGO, or volunteer account; organization/profile creation is transactional |
-| POST | `/api/v1/auth/login` | Verify bcrypt password and issue an expiring signed JWT |
-| POST | `/api/v1/auth/enroll-phone` | Securely add a phone to a legacy account after verifying email and password |
-| GET | `/api/v1/auth/me` | Return the current active user from the database (Bearer token required) |
-| POST | `/api/v1/organizations` | Register a donor or recipient organization for a signed-in account |
-| GET | `/api/v1/organizations/me` | Read the signed-in organization's verification and service area details |
-| GET | `/api/v1/admin/organizations?status=pending` | Admin-only verification queue from PostgreSQL |
-| PATCH | `/api/v1/admin/organizations/:id/verification` | Admin-only verified/rejected decision with reviewer, timestamp, and optional note |
-| GET | `/api/v1/admin/overview` | Admin-only database-backed counts and recent registrations/reviews |
-| GET | `/api/v1/admin/users` | Admin-only searchable, paginated user list with optional role and active filters |
-| GET | `/api/v1/volunteers/me` | Read the signed-in volunteer's stored profile |
+| GET | `/notifications` | User's paginated notification history; accepts `unread=true/false` |
+| GET | `/notifications/unread-count` | Current userâ€™s unread count |
+| PATCH | `/notifications/:id/read` | Mark an owned notification read |
+| PATCH | `/notifications/read-all` | Mark all current-user notifications read |
+| GET | `/events/stream` | Authenticated user-scoped SSE stream; resumes with `Last-Event-ID` |
 
-Successful responses use a `data` envelope; errors use an `error` envelope with a stable code, message, and optional validation details. Registration excludes the admin role. Create the first administrator only through the protected local seed command; there is no public admin registration endpoint.
+Events include donation creation/cancellation/expiry, reservation creation and decisions, volunteer offers and status changes, pickup/delivery confirmation, organization review, new accounts, worker state, and final email failures. The backend chooses each recipient from saved user, organization, service-area, and assignment records. Event payloads contain safe UI signals; pages refetch their authoritative REST resource when relevant events arrive.
 
-### Admin bootstrap
+## Analytics and admin operations
 
-Set `ADMIN_EMAIL`, `ADMIN_FULL_NAME`, a unique `ADMIN_PASSWORD` (at least 16 characters), and `ADMIN_PHONE` in E.164 format in the shell environment, then run `npm run db:seed-admin`. The script hashes the password with bcrypt and refuses to promote or overwrite an account with that email. Do not commit real credentials. `.env.example` contains placeholders only.
+Admin-only analytics endpoints:
 
-Existing accounts created before phone became required keep their password and data. On their first login, enter the email, password, and phone number, then use the secure phone enrollment prompt to attach that number to the account.
+- `GET /api/v1/analytics/overview`
+- `GET /api/v1/analytics/donations/monthly`
+- `GET /api/v1/analytics/donations/locality`
+- `GET /api/v1/analytics/reservations`
+- `GET /api/v1/analytics/delivery`
 
-### Frontend routes
+Donation quantities stay grouped by unit. Delivered quantities come from reservation rows verified as delivered; pending or accepted quantities are not counted as delivered. Admin notification operations show actual queue counts, retry records, recent event aggregates, and the database-backed worker heartbeat. They do not expose email bodies, encryption material, or OTPs.
 
-- `/` — public landing page
-- `/login`, `/register` — API-connected account forms
-- `/dashboard` — redirects to the signed-in user's role dashboard
-- `/dashboard/donor`, `/dashboard/ngo`, `/dashboard/volunteer`, `/dashboard/admin` — protected by session and role
-- Admin pages: `/dashboard/admin/organizations`, `/dashboard/admin/users`, `/dashboard/admin/donors`, `/dashboard/admin/ngos`, `/dashboard/admin/volunteers`, and `/dashboard/admin/trust`.
-- Unimplemented donations, reservations, volunteer tasks, notifications, analytics, and DevOps routes are clearly marked as coming soon. Dashboards do not fabricate activity counts or deployment status.
+## Tests and builds
 
-## Planned implementation phases
+Run `npm.cmd test` for existing auth, donation, assignment, and Phase 5 PostgreSQL integration tests. These create isolated random schemas and drop only those test schemas. Run `npm.cmd run build` for frontend TypeScript/Vite and backend TypeScript builds. SMTP behavior is tested with an injected test transport; no real email is required by tests.
 
-1. Repository, React, Express, and PostgreSQL foundation (complete)
-2. Authentication, roles, organization management, admin review, and redesigned dashboards (implemented; workflows listed as coming soon remain incomplete)
-3. Donations, locality matching, and concurrency-safe reservations
-4. Volunteer assignment, OTP, and delivery tracking
-5. Email worker, retry handling, and analytics
-6. Docker images and full Docker Compose stack
-7. Terraform AWS infrastructure
-8. Puppet host configuration
-9. Ansible deployment and rollback
-10. GitHub Actions CI/CD and Trivy image scanning
-11. Nagios monitoring and recovery demonstrations
-12. Admin DevOps Control Center with trusted deployment records
-13. AWS deployment and end-to-end verification, subject to explicit approval before paid provisioning
-14. Documentation, evidence, project report, and viva preparation
+## Known operational requirements
 
-Do not treat planned infrastructure or unimplemented workflows as deployed or verified. AWS resources will not be provisioned or deleted without explicit approval.
+- The API, PostgreSQL, and notification worker are separate processes; start the worker to send email.
+- Live updates require a valid authenticated SSE connection and an available database. The UI shows connection state and falls back to normal API requests.
+- Production OTP email requires a configured encryption key and valid SMTP service.
+- SMTP has an unavoidable send/record crash window; retries may produce a duplicate email, though queue records themselves are idempotent.
+- No Kubernetes, full-stack deployment, cloud provisioning, or external monitoring service is claimed as complete.

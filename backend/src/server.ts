@@ -12,6 +12,8 @@ const port = Number(process.env.PORT ?? 4000);
 const server = app.listen(port, () => console.info(`FoodLoop API listening on port ${port}`));
 
 const shutdown = () => {
+  const eventHub = app.locals.eventHub as { close(): void } | undefined;
+  eventHub?.close();
   server.close(() => void pool.end().finally(() => process.exit(0)));
 };
 process.on('SIGINT', shutdown);

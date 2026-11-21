@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { api } from '../api/client';
 import { errorMessage } from '../auth/AuthContext';
 import { ConfirmDialog, ComingSoonPanel, EmptyState, ErrorNotice, PageHeader, Pagination, StatCard, StatusBadge, Toast } from '../components/ui';
+import { useFoodLoopEvent } from '../realtime/useFoodLoopRealtime';
 
 interface AdminCounts { total_users: number; donors: number; ngos: number; volunteers: number; pending_organizations: number; verified_organizations: number; rejected_organizations: number }
 interface RecentUser { id: string; full_name: string; email: string; role: string; is_active: boolean; created_at: string }
@@ -21,6 +22,7 @@ export function AdminOverview() {
     finally { setLoading(false); }
   }
   useEffect(() => { void load(); }, []);
+  useFoodLoopEvent(['user.registered','donation.created','donation.cancelled','donation.expired','reservation.created','reservation.accepted','reservation.rejected','reservation.cancelled','reservation.delivered','assignment.offered','assignment.accepted','assignment.picked_up','assignment.delivered','notification.failed','organization.verified','organization.rejected'],()=>void load());
   const counts = overview?.counts;
   return <div className="page-content admin-overview-page">
     <PageHeader eyebrow="FOODLOOP ADMINISTRATION" title="Platform overview" description="A live view of users and organization verification records." actions={<button className="outline-button" onClick={() => void load()} disabled={loading}><RefreshCw size={15} className={loading ? 'spin' : ''} /> Refresh data</button>} />
@@ -82,6 +84,7 @@ export function OrganizationReviewPage() {
     finally { setLoading(false); }
   }
   useEffect(() => { void load(); }, [status, type, query, page]);
+  useFoodLoopEvent(['user.registered','organization.verified','organization.rejected'],()=>void load());
   async function confirmDecision() {
     if (!confirmation) return;
     setBusy(true); setError('');
@@ -136,6 +139,7 @@ export function AdminUsersPage() {
     finally { setLoading(false); }
   }
   useEffect(() => { const timer = window.setTimeout(() => { setPage(1); void load(); }, 180); return () => window.clearTimeout(timer); }, [search, active, page, roleFilter]);
+  useFoodLoopEvent(['user.registered'],()=>void load());
   return <div className="page-content"><PageHeader eyebrow="USER & ORGANIZATION MANAGEMENT" title={title} description="Search registered FoodLoop accounts. This page does not offer unsupported suspend or delete actions." />
     <div className="review-filter-card user-filter-card"><label className="search-control"><Search size={16} /><input aria-label="Search users" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name or email" /></label><label className="select-control"><span>Account status</span><select value={active} onChange={(event) => { setActive(event.target.value); setPage(1); }}><option value="all">All accounts</option><option value="active">Active</option><option value="inactive">Inactive</option></select></label></div>
     {error && <ErrorNotice message={error} onRetry={() => void load()} />}

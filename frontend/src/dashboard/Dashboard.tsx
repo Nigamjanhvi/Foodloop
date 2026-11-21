@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import { useAuth, errorMessage, type CurrentUser, type UserRole } from '../auth/AuthContext';
 import { donorDashboardMode } from './dashboardState';
 import { ComingSoonPanel, EmptyState, ErrorNotice, PageHeader, StatCard, StatusBadge } from '../components/ui';
+import { useFoodLoopEvent, useFoodLoopRealtime, useFoodLoopStreamStatus } from '../realtime/useFoodLoopRealtime';
 
 // The role navigation intentionally points only at implemented overview/review
 // routes or explicit coming-soon pages.
@@ -24,6 +25,7 @@ const navByRole: Record<UserRole, NavGroup[]> = {
     { label: 'My reservations', to: '/dashboard/ngo/reservations', icon: <ClipboardList size={17} /> },
     { label: 'Pickup & delivery', to: '/dashboard/ngo/tracking', icon: <Truck size={17} /> },
     { label: 'Reservation history', to: '/dashboard/ngo/history', icon: <PackageCheck size={17} /> },
+    { label: 'Notifications', to: '/dashboard/ngo/notifications', icon: <Bell size={17} /> },
   ] }],
   volunteer: [{ label: 'VOLUNTEER SPACE', items: [
     { label: 'Overview', to: '/dashboard/volunteer', icon: <Activity size={17} /> },
@@ -46,7 +48,8 @@ const navByRole: Record<UserRole, NavGroup[]> = {
       { label: 'Donations', to: '/dashboard/admin/donations', icon: <Utensils size={17} /> },
       { label: 'Reservations', to: '/dashboard/admin/reservations', icon: <ClipboardList size={17} /> },
       { label: 'Volunteer tasks', to: '/dashboard/admin/tasks', icon: <Truck size={17} /> },
-      { label: 'Notifications', to: '/dashboard/admin/notifications', icon: <Bell size={17} /> },
+      { label: 'Notification operations', to: '/dashboard/admin/notifications', icon: <Bell size={17} /> },
+      { label: 'My notifications', to: '/dashboard/admin/activity', icon: <Bell size={17} /> },
     ] },
     { label: 'INSIGHTS & SYSTEM', items: [
       { label: 'Reports & impact', to: '/dashboard/admin/analytics', icon: <Activity size={17} /> },
@@ -65,10 +68,11 @@ export function DashboardFrame() {
   const navigate = useNavigate();
   const [mobileNav, setMobileNav] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  useFoodLoopRealtime(user?.id ?? '');
   if (!user) return null;
   const groups = navByRole[user.role];
   const pageTitle = useMemo(() => groups.flatMap((group) => group.items).find((entry) => entry.to === location.pathname)?.label ?? roleLabels[user.role], [groups, location.pathname, user.role]);
-  const notificationPath = `/dashboard/${user.role}/notifications`;
+  const notificationPath = user.role==='admin'?'/dashboard/admin/activity':`/dashboard/${user.role}/notifications`;
   function signOut() { logout(); navigate('/login', { replace: true }); }
   return <div className="dashboard-shell">
     {mobileNav && <button className="mobile-nav-scrim" aria-label="Close navigation" onClick={() => setMobileNav(false)} />}
@@ -79,8 +83,16 @@ export function DashboardFrame() {
         <div className="sidebar-user"><span className="avatar">{user.fullName.slice(0, 1).toUpperCase()}</span><span className="sidebar-user-name"><strong>{user.fullName}</strong><small>{roleLabels[user.role]}</small></span><button className="logout-icon" onClick={signOut} title="Sign out" aria-label="Sign out"><LogOut size={16} /></button></div>
       </div>
     </aside>
-    <main className="dashboard-main"><header className="dashboard-topbar"><button className="mobile-menu-button" onClick={() => setMobileNav(true)} aria-label="Open navigation"><Menu size={19} /></button><div className="topbar-crumb"><span className="breadcrumb-muted">FoodLoop</span><ChevronRight size={13} /><span>{pageTitle}</span></div><div className="topbar-actions"><Link className="topbar-icon-button" to={notificationPath} aria-label="Notifications"><Bell size={17} /><span className="notification-dot" /></Link><div className="profile-menu-wrap"><button className="profile-menu-trigger" onClick={() => setProfileOpen(!profileOpen)} aria-expanded={profileOpen}><span className="avatar avatar-small">{user.fullName.slice(0, 1).toUpperCase()}</span><span className="profile-menu-name"><strong>{user.fullName}</strong><small>{roleLabels[user.role]}</small></span><ChevronDown size={15} /></button>{profileOpen && <div className="profile-popover"><span>{user.email}</span><span>{user.phone ?? 'Phone not set'}</span><button onClick={signOut}><LogOut size={15} /> Sign out</button></div>}</div></div></header><div className="dashboard-content"><Outlet /></div></main>
+    <main className="dashboard-main"><header className="dashboard-topbar"><button className="mobile-menu-button" onClick={() => setMobileNav(true)} aria-label="Open navigation"><Menu size={19} /></button><div className="topbar-crumb"><span className="breadcrumb-muted">FoodLoop</span><ChevronRight size={13} /><span>{pageTitle}</span></div><div className="topbar-actions"><LiveConnectionIndicator/><UnreadNotificationLink to={notificationPath}/><div className="profile-menu-wrap"><button className="profile-menu-trigger" onClick={() => setProfileOpen(!profileOpen)} aria-expanded={profileOpen}><span className="avatar avatar-small">{user.fullName.slice(0, 1).toUpperCase()}</span><span className="profile-menu-name"><strong>{user.fullName}</strong><small>{roleLabels[user.role]}</small></span><ChevronDown size={15} /></button>{profileOpen && <div className="profile-popover"><span>{user.email}</span><span>{user.phone ?? 'Phone not set'}</span><button onClick={signOut}><LogOut size={15} /> Sign out</button></div>}</div></div></header><div className="dashboard-content"><Outlet /></div></main>
   </div>;
+}
+
+function LiveConnectionIndicator(){const status=useFoodLoopStreamStatus();return <span className={`live-status ${status}`} aria-live="polite" title={status==='connected'?'Live updates connected':status==='reconnecting'?'Reconnecting to live updates':'Live updates unavailable'}><i/>{status==='connected'?'Live':status==='reconnecting'?'Reconnecting':'Offline'}</span>;}
+function UnreadNotificationLink({to}:{to:string}){
+  const [count,setCount]=useState(0);const [refresh,setRefresh]=useState(0);
+  useEffect(()=>{let alive=true;api.get<{data:{unread_count:number}}>('/notifications/unread-count').then(({data})=>{if(alive)setCount(data.data.unread_count);}).catch(()=>undefined);return()=>{alive=false;};},[refresh]);
+  useFoodLoopEvent(['*'],()=>setRefresh((value)=>value+1));
+  return <Link className="topbar-icon-button notification-link" to={to} aria-label={count?`Notifications, ${count} unread`:'Notifications'}><Bell size={17}/>{count>0&&<span className="notification-count">{count>99?'99+':count}</span>}</Link>;
 }
 
 interface OrganizationProfile {
@@ -158,6 +170,7 @@ function DonorWorkspace({ user, organization, onRefresh }: { user: CurrentUser; 
     catch (failure) { setSummaryError(errorMessage(failure)); }
   }
   useEffect(() => { void loadSummary(); }, []);
+  useFoodLoopEvent(['donation.created','donation.cancelled','donation.expired','reservation.created','reservation.accepted','reservation.rejected','reservation.delivered'],()=>void loadSummary());
   const quantitySummary = summary?.quantity_by_unit.length
     ? summary.quantity_by_unit.map((item) => `${item.quantity} ${item.unit === 'kilograms' ? 'kg' : item.unit}`).join(' · ')
     : '0';
@@ -174,7 +187,7 @@ function DonorWorkspace({ user, organization, onRefresh }: { user: CurrentUser; 
     <div className="stat-grid donor-stat-grid">{metrics.map(([label, value, note, icon, tone]) => <StatCard key={label} label={label} value={value} note={note} icon={icon} tone={tone} />)}</div>
     <div className="quick-action-grid"><FeatureAction to="/dashboard/donor/donations/new" icon={<Utensils size={19} />} title="Create new donation" detail="Post surplus food and pickup details." /><FeatureAction to="/dashboard/donor/donations" icon={<ClipboardList size={19} />} title="Manage my donations" detail="Review active and completed listings." /><FeatureAction to="/dashboard/donor/reservations" icon={<Users size={19} />} title="Reservation requests" detail="Coordinate with nearby recipients." /><FeatureAction to="/dashboard/donor/history" icon={<PackageCheck size={19} />} title="Donation history" detail="See completed and expired listings." /></div>
     {!summaryError && summary?.total_donations === 0 && <section className="dashboard-card donor-empty-workspace"><EmptyState icon={<Utensils size={28} />} title="Your first donation starts here" description="Your verified organization can now publish its first real listing for nearby recipient organizations." action={<Link className="button" to="/dashboard/donor/donations/new">Create your first donation <ChevronRight size={17} /></Link>} /></section>}
-    <section className="workspace-section-grid"><ComingSoonPanel title="Delivery impact" description="Delivery totals are calculated only from reservation records marked delivered. Volunteer delivery tracking is deferred to Phase 4." features={['Recorded delivered quantity', 'Organization participation']} /><ComingSoonPanel title="Notifications" description="There is no notification feed yet, so this panel will stay empty until real notification records are connected." features={['Organization status updates', 'Reservation updates']} /></section>
+    <section className="workspace-section-grid"><ComingSoonPanel title="Organization delivery impact" description="Verified delivery totals are available in platform analytics. Donor-specific impact reporting is a separate future improvement." features={['Delivered quantity by unit', 'Completed collection records']} /><FeatureAction to="/dashboard/donor/notifications" icon={<Bell size={19}/>} title="Your notifications" detail="See reservation requests, delivery updates, and organization review activity." /></section>
   </div>;
 }
 
@@ -185,6 +198,7 @@ function FeatureAction({ to, icon, title, detail }: { to: string; icon: ReactNod
 export function NgoDashboard() {
   const { user } = useAuth();
   const { organization, loading, error, refresh } = useOrganization();
+  useFoodLoopEvent(['organization.verified','organization.rejected'],()=>void refresh());
   if (loading) return <DashboardSkeleton />;
   if (error) return <div className="page-content"><ErrorNotice message={error} onRetry={() => void refresh()} /></div>;
   if (!organization) return <div className="page-content"><PageHeader eyebrow="RECIPIENT WORKSPACE" title="Organization profile missing" description="This account has no linked recipient organization." /></div>;
@@ -208,6 +222,7 @@ export function VolunteerDashboard() {
     finally { setLoading(false); }
   }
   useEffect(() => { void load(); }, []);
+  useFoodLoopEvent(['assignment.offered','assignment.accepted','assignment.cancelled','assignment.picked_up','assignment.delivered'],()=>void load());
   if (loading) return <DashboardSkeleton />;
   return <div className="page-content"><PageHeader eyebrow="VOLUNTEER WORKSPACE" title={<>Welcome, <span className="welcome-name">{user!.fullName.split(' ')[0]}</span></>} description="Your volunteer profile and service area." actions={profile && <StatusBadge status={profile.is_available ? 'active' : 'inactive'} label={profile.is_available ? 'Available' : 'Unavailable'} />} />
     {error && <ErrorNotice message={error} onRetry={() => void load()} />}

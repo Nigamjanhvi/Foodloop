@@ -42,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function acceptSession(data: { token: string; user: CurrentUser }) {
     sessionStorage.setItem('foodloop.accessToken', data.token);
     setUser(data.user);
+    window.dispatchEvent(new Event('foodloop:token-changed'));
   }
 
   async function login(email: string, password: string) {
@@ -62,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function logout() {
     sessionStorage.removeItem('foodloop.accessToken');
     setUser(null);
+    window.dispatchEvent(new Event('foodloop:token-changed'));
   }
 
   const value = useMemo(() => ({ user, loading, login, enrollPhone, register, logout }), [user, loading]);
