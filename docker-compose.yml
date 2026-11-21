@@ -2,19 +2,96 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: foodloop
-      POSTGRES_USER: foodloop
+      POSTGRES_DB: ${POSTGRES_DB:-foodloop}
+      POSTGRES_USER: ${POSTGRES_USER:-foodloop}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-foodloop_dev_password}
     ports:
-      - "${FOODLOOP_DB_HOST_PORT:-5432}:5432"
+      - "${FOODLOOP_DB_HOST_PORT:-5434}:5432"
     volumes:
       - foodloop_pgdata:/var/lib/postgresql/data
-      - ./database/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U foodloop -d foodloop"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
+
+  backend:
+    image: foodloop-backend:local
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment: &app-environment
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgres://${POSTGRES_USER:-foodloop}:${POSTGRES_PASSWORD:-foodloop_dev_password}@postgres:5432/${POSTGRES_DB:-foodloop}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the root .env file}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_MESSAGE_DOMAIN: ${SMTP_MESSAGE_DOMAIN:-localhost}
+      NOTIFICATION_POLL_MS: ${NOTIFICATION_POLL_MS:-2000}
+      NOTIFICATION_MAX_ATTEMPTS: ${NOTIFICATION_MAX_ATTEMPTS:-8}
+      NOTIFICATION_RETRY_BASE_MS: ${NOTIFICATION_RETRY_BASE_MS:-5000}
+      NOTIFICATION_ENCRYPTION_KEY: ${NOTIFICATION_ENCRYPTION_KEY:-}
+      ADMIN_NOTIFICATION_EMAIL: ${ADMIN_NOTIFICATION_EMAIL:-}
+    command: ["sh", "-c", "node backend/dist/db/migrate.js && npm run start --workspace backend"]
+    ports:
+      - "${FOODLOOP_API_HOST_PORT:-4000}:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    environment:
+      API_PROXY_TARGET: http://backend:4000
+    ports:
+      - "${FOODLOOP_FRONTEND_HOST_PORT:-5173}:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  worker:
+    image: foodloop-backend:local
+    command: ["npm", "run", "notifications:worker"]
+    environment: *app-environment
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - --input-type=module
+        - -e
+        - "import pg from 'pg'; const pool=new pg.Pool({connectionString:process.env.DATABASE_URL}); let healthy=false; try { const result=await pool.query(\"SELECT 1 FROM notification_worker_state WHERE worker_id=(SELECT worker_id FROM notification_worker_state WHERE worker_id LIKE 'foodloop-mail-%' ORDER BY started_at DESC LIMIT 1) AND stopped_at IS NULL AND last_error IS NULL AND heartbeat_at>NOW()-INTERVAL '90 seconds'\"); healthy=Boolean(result.rowCount); } catch {} await pool.end(); process.exit(healthy?0:1);"
+      interval: 20s
+      timeout: 8s
+      retries: 3
+      start_period: 45s
+    restart: unless-stopped
 
 volumes:
   foodloop_pgdata:

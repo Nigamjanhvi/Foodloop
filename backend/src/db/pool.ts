@@ -14,3 +14,14 @@ export const pool = new Pool({
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
 });
+
+// PostgreSQL can close idle connections during a restart or maintenance event.
+// node-postgres removes that client from the pool, but the Pool's error event
+// must be handled or Node treats the event as unhandled and terminates the API.
+pool.on('error', (error) => {
+  console.error(JSON.stringify({
+    event: 'database.pool.idle_client_error',
+    code: 'code' in error ? error.code : undefined,
+    message: error.message,
+  }));
+});

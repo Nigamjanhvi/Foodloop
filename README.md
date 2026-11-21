@@ -9,18 +9,22 @@ FoodLoop is a community food rescue app connecting verified food donors, recipie
 - **Phase 3:** donation listings, saved service-area matching, reservations, status transitions, quantity locking, expiry processing, admin inspection.
 - **Phase 4:** volunteer profiles and availability, assignment offers, acceptance/rejection, hashed pickup and delivery OTPs, attempt limits, delivery records.
 - **Phase 5:** transactional notification records, SMTP worker and retry queue, encrypted OTP email payloads, in-app notification center, authenticated replayable SSE, admin notification operations, PostgreSQL analytics.
+- **Phase 6:** Dockerfiles for frontend/backend, four-service Docker Compose stack, container networking, persistent PostgreSQL volume, application-managed migrations, and health checks.
 
-The repository does not include a production deployment or paid cloud infrastructure. The web app remains usable if SSE is offline; data can still be fetched through its normal API routes.
+Docker support is for local development and academic demonstration. The repository does not include an AWS/production deployment or paid cloud infrastructure. The web app remains usable if SSE is offline; data can still be fetched through its normal API routes.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  UI[React dashboards] -->|REST with bearer JWT| API[Express API]
-  UI <-->|Authenticated fetch stream with Last-Event-ID| SSE[Authenticated SSE endpoint]
-  API -->|business transaction + event records| DB[(PostgreSQL)]
-  DB -->|durable user scoped events| SSE
-  DB -->|pending email jobs| Worker[Independent email worker]
+  Browser[Browser] -->|HTTP :5173| Frontend[Frontend container: Vite preview]
+  Frontend -->|REST and SSE /api proxy| API[Backend container: Express API :4000]
+  API -->|DATABASE_URL uses postgres:5432| DB[(PostgreSQL 16 container)]
+  Worker[Independent worker container] -->|DATABASE_URL uses postgres:5432| DB
+  DB -->|persistent named volume| Volume[(foodloop_pgdata)]
+  API -->|business transaction + event records| DB
+  API -->|durable user scoped SSE reads| DB
+  DB -->|pending email jobs| Worker
   Worker -->|Nodemailer SMTP| Mail[Configured SMTP service]
 ```
 
@@ -38,7 +42,39 @@ Pickup and delivery OTP issuance has dedicated production endpoints. Those endpo
 
 The migration runner applies numbered SQL files under `database/migrations/` in order and records them in `schema_migrations`. Migrations 007 and 008 add notifications, user-scoped replay events, worker state, transactional business event hooks, and admin activity events. They preserve the existing queue and records. Do not edit an applied migration; add a higher numbered migration for schema changes.
 
-## Local development (Windows PowerShell)
+## Run all four containers (Windows PowerShell)
+
+The root Compose file starts PostgreSQL, the Express API, the React frontend, and the notification worker. Copy `.env.example` to `.env`, use a unique local `JWT_SECRET` of at least 32 bytes, and keep `POSTGRES_PASSWORD` consistent with the password in the host `DATABASE_URL`. Do not put SMTP credentials into source control.
+
+```powershell
+docker compose build
+docker compose up -d
+docker compose ps
+docker compose logs -f
+docker compose logs -f worker
+```
+
+Open `http://localhost:5173` (or the host port selected by `FOODLOOP_FRONTEND_HOST_PORT`). Check the API/database health at `http://localhost:4000/api/health` (or the configured API host port). Frontend requests and SSE are forwarded by Vite's preview proxy to the `backend` Compose service. Containers connect to PostgreSQL using the service name `postgres` and port `5432`; host applications continue to use `localhost:5434` by default. If local development servers already occupy 4000 and 5173, choose free ports such as 4001 and 5175 with `FOODLOOP_API_HOST_PORT` and `FOODLOOP_FRONTEND_HOST_PORT`.
+
+The backend waits for PostgreSQL's `pg_isready` health check, then runs the existing migration runner before starting Express. Migration files are not mounted into PostgreSQL's `docker-entrypoint-initdb.d`; this prevents its one-time initialization scripts from applying the same migrations separately from `schema_migrations`. Re-running the app checks migration records and applies only missing migrations. The existing `foodloop_pgdata` named volume is retained across container restarts. On this machine, the stack was built and run with API/frontend host ports 4001/5175 because existing local processes used 4000/5173. All four services reached healthy status; frontend, direct API health, and frontend-proxied API health returned HTTP 200. The backend reported that migrations were current. PostgreSQL was restarted without deleting its volume, and read-only row counts remained unchanged (users 6, organizations 4, donations 3, reservations 2, migrations 8). This verifies local startup, health, migrations, and persistence. It is not a full browser workflow or a real email delivery test; no screenshots were captured.
+
+The worker health check queries the latest worker record and requires a recent heartbeat, no stop timestamp, and no recorded worker error. A running container without configured/reachable SMTP is not reported healthy. Set SMTP values and `NOTIFICATION_ENCRYPTION_KEY` to enable and verify delivery.
+
+To stop containers while preserving the database:
+
+```powershell
+docker compose down
+```
+
+Do not use `docker compose down -v`; that removes the persistent database volume. The existing PostgreSQL-only command remains available:
+
+```powershell
+docker compose up -d postgres
+```
+
+When only PostgreSQL is running, use the host `.env` URL and `npm.cmd run db:migrate` before starting the app with `npm.cmd run dev`.
+
+## Local development without app containers (Windows PowerShell)
 
 Requirements: Node.js, npm, and Docker Desktop with its Linux container engine running.
 
@@ -50,7 +86,7 @@ Requirements: Node.js, npm, and Docker Desktop with its Linux container engine r
 6. Open `http://localhost:5173`; API health is `http://localhost:4000/api/health`.
 7. Run backend integration tests: `npm.cmd test`.
 
-FoodLoop's example host port is **5434**. Keep `FOODLOOP_DB_HOST_PORT` and `DATABASE_URL` in `.env` aligned. The default compose volume is persistent; do not remove it to fix connection errors.
+FoodLoop's example host port is **5434**. Compose and `.env.example` default to host port 5434; PostgreSQL always listens on 5432 inside its container. Keep `FOODLOOP_DB_HOST_PORT` and `DATABASE_URL` in `.env` aligned. The default compose volume is persistent; do not remove it to fix connection errors.
 
 ### Configure SMTP and run the worker
 
@@ -96,12 +132,12 @@ Donation quantities stay grouped by unit. Delivered quantities come from reserva
 
 ## Tests and builds
 
-Run `npm.cmd test` for existing auth, donation, assignment, and Phase 5 PostgreSQL integration tests. These create isolated random schemas and drop only those test schemas. Run `npm.cmd run build` for frontend TypeScript/Vite and backend TypeScript builds. SMTP behavior is tested with an injected test transport; no real email is required by tests.
+Run `npm.cmd test` for existing auth, donation, assignment, and Phase 5 PostgreSQL integration tests. These create isolated random schemas and drop only those test schemas. Run `npm.cmd run build` for frontend TypeScript/Vite and backend TypeScript builds. SMTP behavior is tested with an injected test transport; no real email is required by tests. At the Phase 6 verification snapshot, all 12 backend tests passed and both frontend/backend builds completed successfully.
 
 ## Known operational requirements
 
 - The API, PostgreSQL, and notification worker are separate processes; start the worker to send email.
 - Live updates require a valid authenticated SSE connection and an available database. The UI shows connection state and falls back to normal API requests.
-- Production OTP email requires a configured encryption key and valid SMTP service.
+- Production OTP email requires a configured encryption key and valid SMTP service. Phase 6 confirmed the worker container's health, but did not send a real message to an inbox.
 - SMTP has an unavoidable send/record crash window; retries may produce a duplicate email, though queue records themselves are idempotent.
-- No Kubernetes, full-stack deployment, cloud provisioning, or external monitoring service is claimed as complete.
+- No AWS deployment, cloud provisioning, Kubernetes, CI/CD pipeline, or external monitoring service is claimed as complete. Docker Compose is for the local four-container stack only.
