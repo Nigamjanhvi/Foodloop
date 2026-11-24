@@ -1,0 +1,130 @@
+name: foodloop-prod
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - foodloop_pgdata_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - database
+
+  backend:
+    image: ${ECR_REGISTRY:?Set ECR_REGISTRY}/foodloop-backend:${IMAGE_TAG:?Set IMAGE_TAG}
+    environment: &app_environment
+      NODE_ENV: production
+      PORT: "4000"
+      DATABASE_URL: postgres://${POSTGRES_USER:?Set POSTGRES_USER}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:?Set POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:?Set JWT_EXPIRES_IN}
+      CORS_ORIGIN: ${CORS_ORIGIN:?Set CORS_ORIGIN}
+      SMTP_HOST: ${SMTP_HOST:?Set SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:?Set SMTP_PORT}
+      SMTP_SECURE: ${SMTP_SECURE:?Set SMTP_SECURE}
+      SMTP_USER: ${SMTP_USER-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD-}
+      SMTP_FROM: ${SMTP_FROM:?Set SMTP_FROM}
+      SMTP_MESSAGE_DOMAIN: ${SMTP_MESSAGE_DOMAIN:?Set SMTP_MESSAGE_DOMAIN}
+      NOTIFICATION_POLL_MS: ${NOTIFICATION_POLL_MS:?Set NOTIFICATION_POLL_MS}
+      NOTIFICATION_MAX_ATTEMPTS: ${NOTIFICATION_MAX_ATTEMPTS:?Set NOTIFICATION_MAX_ATTEMPTS}
+      NOTIFICATION_RETRY_BASE_MS: ${NOTIFICATION_RETRY_BASE_MS:?Set NOTIFICATION_RETRY_BASE_MS}
+      NOTIFICATION_ENCRYPTION_KEY: ${NOTIFICATION_ENCRYPTION_KEY:?Set NOTIFICATION_ENCRYPTION_KEY}
+      ADMIN_NOTIFICATION_EMAIL: ${ADMIN_NOTIFICATION_EMAIL:-}
+    command: ["sh", "-c", "node backend/dist/db/migrate.js && npm run start --workspace backend"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - web
+      - database
+
+  frontend:
+    image: ${ECR_REGISTRY:?Set ECR_REGISTRY}/foodloop-frontend:${IMAGE_TAG:?Set IMAGE_TAG}
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - web
+
+  worker:
+    image: ${ECR_REGISTRY:?Set ECR_REGISTRY}/foodloop-backend:${IMAGE_TAG:?Set IMAGE_TAG}
+    command: ["npm", "run", "notifications:worker"]
+    environment: *app_environment
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - --input-type=module
+        - -e
+        - "import pg from 'pg'; const pool=new pg.Pool({connectionString:process.env.DATABASE_URL}); let healthy=false; try { const result=await pool.query(\"SELECT 1 FROM notification_worker_state WHERE worker_id=(SELECT worker_id FROM notification_worker_state WHERE worker_id LIKE 'foodloop-mail-%' ORDER BY started_at DESC LIMIT 1) AND stopped_at IS NULL AND last_error IS NULL AND heartbeat_at>NOW()-INTERVAL '90 seconds'\"); healthy=Boolean(result.rowCount); } catch {} await pool.end(); process.exit(healthy?0:1);"
+      interval: 20s
+      timeout: 8s
+      retries: 3
+      start_period: 45s
+    restart: unless-stopped
+    networks:
+      - database
+      - web
+
+  caddy:
+    image: caddy:2.11.9-alpine
+    environment:
+      FOODLOOP_DOMAIN: ${FOODLOOP_DOMAIN:?Set FOODLOOP_DOMAIN to a DNS name pointing to this EC2 instance}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - foodloop_caddy_data:/data
+      - foodloop_caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - web
+
+volumes:
+  foodloop_pgdata_prod:
+    name: foodloop_pgdata_prod
+  foodloop_caddy_data:
+    name: foodloop_caddy_data
+  foodloop_caddy_config:
+    name: foodloop_caddy_config
+
+networks:
+  web:
+  database:
+    internal: true

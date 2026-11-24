@@ -43,9 +43,11 @@ Foodloop/
 │   ├── assignments/          # Volunteer task and OTP screens
 │   ├── notifications/        # User notification center and admin queue monitor
 │   └── realtime/             # Authenticated SSE client and event hooks
-├── frontend/Dockerfile       # Multi-stage React build and Vite preview server
+├── frontend/Dockerfile       # Multi-stage local Compose build with Vite preview
+├── frontend/Dockerfile.prod  # Production static frontend build with Nginx
 ├── database/migrations/      # Ordered additive SQL migrations 001–008
 ├── docker-compose.yml        # Four local services and persistent PostgreSQL volume
+├── infra/deploy/             # Phase 9 production Compose, proxy config, and runbook
 ├── .dockerignore             # Excludes secrets, dependencies, and generated files
 ├── .env.example              # Safe configuration template; no live credentials
 ├── infra/terraform/           # Phase 7 AWS network, IAM, ECR, EC2 infrastructure
@@ -117,7 +119,7 @@ Foodloop/
 
 ### Phase status
 
-Phases 1–6 (application foundation, authentication, food donation and reservations, volunteer pickup/delivery verification, notifications and impact analytics, and Docker Compose) are completed. Phase 7 (Terraform infrastructure) and Phase 8 (Ansible host configuration) are completed as described below. Phases 9–12 remain pending.
+Phases 1–6 (application foundation, authentication, food donation and reservations, volunteer pickup/delivery verification, notifications and impact analytics, and local Docker Compose) are completed. Phase 7 (Terraform infrastructure) and Phase 8 (Ansible host configuration) are completed as described below. Phase 9 is partially deployed: the user reports that the frontend donor dashboard was opened through EC2 over temporary HTTP. Full production verification and hardening remain pending. Phases 10–12 remain pending.
 
 ### Phase 7 — Terraform AWS infrastructure
 
@@ -137,19 +139,56 @@ Phases 1–6 (application foundation, authentication, food donation and reservat
 - Local syntax checks for both playbooks and the inventory graph also passed from the WSL virtual environment. On the Windows-mounted WSL filesystem, validation explicitly selected `ANSIBLE_CONFIG` because Ansible otherwise ignores a config discovered in a world-writable mount.
 - Phase 8 configures the host only. It does not deploy FoodLoop containers, production secrets, or application data.
 
-### Phase 9 — FoodLoop production deployment on EC2 (pending / next)
+### Phase 9 — FoodLoop production deployment on EC2 (partially deployed; verification pending)
 
-- [ ] Inspect production configuration and required environment variables; keep all secret values out of Git and documentation.
-- [ ] Prepare a production Docker Compose configuration without replacing the existing local Compose setup.
-- [ ] Build frontend and backend images for the EC2 architecture (`linux/amd64`). The backend image is also used by the notification worker.
-- [ ] Authenticate to AWS ECR and push the images to `foodloop-frontend` and `foodloop-backend`.
-- [ ] Configure production environment variables securely on EC2.
-- [ ] Pull the images and start the application containers.
-- [ ] Verify the frontend, backend health endpoint, worker, database connectivity, and persistent database storage.
-- [ ] Verify PostgreSQL is not publicly exposed.
-- [ ] Perform application smoke tests and capture genuine deployment evidence.
+**Preparation and an initial temporary HTTP deployment are reported complete. Full production verification and hardening are pending.** The root local `docker-compose.yml`, `frontend/Dockerfile`, and `backend/Dockerfile` remain unchanged. Deployment facts below are based on the user's supplied progress; this documentation update did not connect to AWS or independently inspect the EC2 host.
 
-No Phase 9 deployment or evidence is claimed complete.
+Prepared files:
+
+- `frontend/Dockerfile.prod` builds the frontend using the existing root npm workspace manifests and lockfile, then serves the generated static files using pinned `nginx:1.30.8-alpine3.24`.
+- `infra/deploy/nginx.prod.conf` listens on internal port 8080, serves the SPA with `index.html` fallback, and proxies `/api/` to `backend:4000` without rewriting the request path; it preserves Authorization/forwarded-protocol headers and disables proxy buffering for authenticated SSE. The frontend health check fetches `/` on port 8080.
+- `infra/deploy/compose.prod.yml` pins Compose project name `foodloop-prod`, uses the existing private ECR repositories `foodloop-frontend` and `foodloop-backend` with a required explicit immutable `IMAGE_TAG`, and uses the backend image for the worker because its runtime includes the worker script and dependencies.
+- `infra/deploy/Caddyfile` terminates HTTPS for the configured DNS name and forwards to the Nginx frontend. Explicit persistent volumes are `foodloop_pgdata_prod`, `foodloop_caddy_data` mounted at `/data`, and `foodloop_caddy_config` mounted at `/config`.
+- `infra/deploy/.env.production.example` contains placeholders only; real environment and bootstrap seed values remain outside source control.
+- `infra/deploy/README.md` documents the `linux/amd64` builds, local `foodloop-admin` ECR push, EC2 instance-role pull, non-secret file transfer, direct on-EC2 environment creation, smoke checks, backup/restore, and rollback.
+- `README.md` summarizes the partial deployment and remaining verification.
+- `.gitignore` allows the safe `.env.production.example` while ignoring real `.env.production` values.
+
+The production frontend uses same-origin `/api/v1`; Nginx is configured to proxy API and SSE traffic privately to Express. The repository Caddyfile is configured for HTTPS using `FOODLOOP_DOMAIN`, while the user reports that the temporary EC2 Caddy configuration used HTTP on port 80 and proxied to `frontend:8080`. These are distinct configurations: the temporary HTTP setup is not hardened public production. In the repository Compose configuration Caddy alone publishes TCP 80/443; PostgreSQL has no published port and persists to `foodloop_pgdata_prod` on an internal Docker network. Terraform already allows inbound TCP 80 and 443 while SSH remains restricted to `admin_cidr` in `infra/terraform/security.tf`. EC2's attached `foodloop-ec2-role` can obtain ECR auth and pull from the two repositories; local `foodloop-admin` needs push permissions. The current Ansible role does not install AWS CLI v2. The production environment file is reported created interactively on EC2 under `/opt/foodloop/config/` with restrictive permissions; its values are not recorded here. Rerunning Ansible can reset that directory's mode to `0750`; reapply private permissions before Compose use.
+
+#### User-reported deployment milestones and evidence
+
+- Existing host: `i-0998980f6f7059da3`, Amazon Linux 2023, `t3.small`, x86_64, `ap-south-1`. The user reports successful SSH access and verification of Docker Engine `25.0.14` and Docker Compose `v5.8.0`.
+- The user reports that production frontend/backend images were built for the host architecture, pushed to the existing private ECR repositories, and checked with ECR image-describe commands. Release tag: `p9-20261124-222955`.
+- Frontend: `247558788371.dkr.ecr.ap-south-1.amazonaws.com/foodloop-frontend:p9-20261124-222955`, digest `sha256:b1719f0887ee3c6dac87e54c10e33a0e56eab1399a39587622d38cec62209e25`.
+- Backend (also intended for the worker): `247558788371.dkr.ecr.ap-south-1.amazonaws.com/foodloop-backend:p9-20261124-222955`, digest `sha256:90a0ef47dbcc6453bb07cb6ee3bcd132a37848b675e309c3b547efdf35e82b9e`.
+- The user reports transferring the non-secret Compose and Caddy files to `/opt/foodloop`, creating the production environment file directly under `/opt/foodloop/config/` with restrictive permissions, and using the EC2 instance role for ECR authentication rather than copying workstation credentials.
+- The user reports a browser visit to `http://13.200.252.1/dashboard/donor`: the React donor dashboard rendered, showed the donor organization's pending administrator-verification state, and displayed the UI's “Live” connection indicator. This is visual route-rendering evidence only; it does not prove API health, live SSE delivery, database connectivity or persistence, container health, or role workflows. The public IP can change after an instance stop/start.
+- No evidence supplied confirms PostgreSQL persistence, backend health, migration state on EC2, any service health status, SMTP delivery, worker health, admin bootstrap, or full integration tests. These remain unverified or pending.
+
+#### Remaining Phase 9 work
+
+- [ ] Replace the temporary HTTP configuration with the repository's domain-based HTTPS Caddy configuration after configuring a real DNS name; confirm the current public address and DNS. Do not submit credentials over HTTP.
+- [ ] Rotate JWT, database and notification-encryption secrets that were previously shared, using a planned secure procedure. Do not record values in documentation.
+- [ ] Verify Compose service status, migrations, `GET /api/health` (which checks PostgreSQL), frontend-proxied API, database volume mount, and that PostgreSQL has no host port mapping.
+- [ ] Configure and verify SMTP before expecting the notification worker to become healthy or deliver email; SMTP was postponed and worker/email delivery are unverified.
+- [ ] Perform the existing one-time production admin bootstrap securely after migrations and backend health, then test admin sign-in. Do not repeat a successful seed.
+- [ ] Verify donor, recipient, volunteer, and admin workflows and retain genuine, redacted evidence. The observed donor organization is still awaiting admin approval.
+- [ ] Verify database backup/restore procedure and document actual results before treating the deployment as production-ready.
+
+This documentation update did not build or push images, connect to EC2, run deployment commands, or independently validate AWS state. The supplied browser evidence shows the dashboard route rendered over HTTP; it does not establish a fully verified production deployment.
+
+#### Phase 9 operating notes
+
+- The reported deployed release is `p9-20261124-222955`; its exact image refs and digests are recorded above. For a future release, build with `docker buildx build --platform linux/amd64 --load -f frontend/Dockerfile.prod -t <registry>/foodloop-frontend:<unique-tag> .` and `docker buildx build --platform linux/amd64 --load -f backend/Dockerfile -t <registry>/foodloop-backend:<same-tag> .`, from repository root. Push explicit new tags to immutable ECR repositories; do not reuse a tag.
+- On EC2, `aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin "$REGISTRY"` uses the attached `foodloop-ec2-role` instance profile. Do not copy local credentials. The Terraform role has ECR auth and pull permissions; local image push requires ECR upload/put-image permissions.
+- Required runtime settings are `ECR_REGISTRY`/`IMAGE_TAG` (image selection), `FOODLOOP_DOMAIN`/`CORS_ORIGIN` (HTTPS host and browser origin), `POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PASSWORD` (database), `JWT_SECRET`/`JWT_EXPIRES_IN` (server-side tokens), `SMTP_HOST`/`SMTP_PORT`/`SMTP_SECURE`/`SMTP_USER`/`SMTP_PASSWORD`/`SMTP_FROM`/`SMTP_MESSAGE_DOMAIN` (worker mail), `NOTIFICATION_POLL_MS`/`NOTIFICATION_MAX_ATTEMPTS`/`NOTIFICATION_RETRY_BASE_MS` (worker retry), `NOTIFICATION_ENCRYPTION_KEY` (OTP email payload encryption), and optional `ADMIN_NOTIFICATION_EMAIL`. The one-time seed separately uses `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`, and `ADMIN_PHONE`.
+- Compose sets `NODE_ENV=production` and `PORT=4000` and constructs `DATABASE_URL` from `POSTGRES_*`; optional backend `DB_POOL_MAX` keeps its default of 10. `SMTP_TEST_TRANSPORT` is test-only and is not passed in production.
+- Initial admin creation uses the existing `npm run db:seed-admin` script once after migrations and backend health. The `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`, and `ADMIN_PHONE` values are read interactively, passed only to that one-off process, then unset; they are not part of `.env.production`. The script bcrypt-hashes the password and will not promote a non-admin account.
+- `infra/terraform/security.tf` already permits inbound public TCP 80/443 and restricts SSH TCP 22 to the configured admin `/32`; it has no API or PostgreSQL ingress. A real DNS record must point the configured domain to the EC2 address for Caddy HTTPS. Ansible prepares `/opt/foodloop/{config,backups,logs}` with `ec2-user:docker`, mode `0750`; it does not install AWS CLI v2, whose manual install is documented in the runbook.
+- Once domain-based HTTPS is configured, smoke test `curl --fail --show-error https://<domain>/api/health` and `curl --fail --show-error https://<domain>/api/v1`; the health route checks PostgreSQL connectivity. The detailed runbook also verifies worker health, no host mapping for PostgreSQL port 5432, persistent volume name, and database backups. Do not count the current HTTP dashboard render as these checks.
+- Roll back application images by changing `IMAGE_TAG` to a retained prior immutable tag, then run `docker compose --env-file config/.env.production -f compose.prod.yml pull frontend backend worker` and `docker compose --env-file config/.env.production -f compose.prod.yml up -d frontend backend worker`. The pinned project name and explicit volumes preserve `foodloop_pgdata_prod`, `foodloop_caddy_data`, and `foodloop_caddy_config`; do not remove or recreate them. Review migration compatibility before running an older image against a newer schema.
+- The pinned Nginx image version and configuration were prepared locally. Nginx CLI validation was unavailable on the workstation; the production Nginx configuration has not been validated by starting a container or reaching EC2.
 
 ### Phase 10 — GitHub Actions CI/CD (pending)
 
@@ -501,8 +540,8 @@ Expected rollback tests deliberately trigger PostgreSQL check-constraint errors 
 
 ## 12. Current limitations and explicitly unimplemented work
 
-- The user reports Phase 7 provisioning and Phase 8 host configuration/verification complete. AWS live drift has not been independently checked during this documentation update, and no Phase 9 application deployment evidence has been supplied.
-- Phases 9–12 remain pending as described above. Puppet is excluded from the roadmap.
+- The user reports Phase 7 provisioning and Phase 8 host configuration/verification complete. AWS live drift has not been independently checked during this documentation update. For Phase 9, user-supplied evidence reports immutable ECR image pushes and a donor dashboard render over temporary EC2 HTTP; broader deployment verification and hardening remain pending as described above.
+- Phase 9 is partial; Phases 10–12 remain pending. Puppet is excluded from the roadmap.
 - Admin DevOps, task management, and platform settings screens are placeholders, not connected production controls.
 - Real SMTP inbox delivery was not verified during the Phase 6 container smoke check; the worker did start and pass its health check using the configured worker/database state.
 - No fake organization verification, monitoring state, demo user, or production deployment status is generated. Organization status, worker status, queue status, and analytics are drawn from persisted records.
@@ -528,4 +567,5 @@ Expected rollback tests deliberately trigger PostgreSQL check-constraint errors 
 - [Safe environment template](.env.example)
 - [Phase 7 Terraform implementation and instructions](infra/terraform/README.md)
 - [Phase 8 Ansible host configuration and instructions](infra/ansible/README.md)
+- [Phase 9 production deployment runbook](infra/deploy/README.md)
 - [Database migrations](database/migrations/)
