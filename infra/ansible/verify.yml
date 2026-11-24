@@ -1,0 +1,89 @@
+---
+- name: Verify FoodLoop EC2 configuration
+  hosts: foodloop_ec2
+  gather_facts: true
+  become: true
+
+  tasks:
+    - name: Check remote connectivity with Ansible ping
+      ansible.builtin.ping:
+
+    - name: Verify Amazon Linux 2023 and x86_64
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == "Amazon"
+          - ansible_distribution_major_version == "2023"
+          - ansible_architecture == "x86_64"
+        fail_msg: "Target is not the expected Amazon Linux 2023 x86_64 host."
+
+    - name: Check Docker service is active
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - is-active
+          - docker
+      register: foodloop_docker_service
+      changed_when: false
+      failed_when: foodloop_docker_service.rc != 0 or foodloop_docker_service.stdout != "active"
+
+    - name: Read Docker CLI version
+      become_user: ec2-user
+      ansible.builtin.command:
+        argv:
+          - docker
+          - --version
+      register: foodloop_docker_version
+      changed_when: false
+
+    - name: Read Docker Compose V2 version
+      become_user: ec2-user
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - version
+      register: foodloop_compose_version
+      changed_when: false
+
+    - name: Read Docker daemon information
+      become_user: ec2-user
+      ansible.builtin.command:
+        argv:
+          - docker
+          - info
+      register: foodloop_docker_info
+      changed_when: false
+
+    - name: Extract the Docker daemon server version
+      ansible.builtin.set_fact:
+        foodloop_docker_daemon_version: "{{ foodloop_docker_info.stdout_lines | select('match', '^ Server Version:') | first | default('Docker daemon responded') }}"
+
+    - name: Inspect FoodLoop deployment directories
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /opt/foodloop
+        - /opt/foodloop/config
+        - /opt/foodloop/backups
+        - /opt/foodloop/logs
+      register: foodloop_directory_stats
+
+    - name: Ensure all FoodLoop deployment directories exist
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.isdir
+        fail_msg: "A required FoodLoop deployment directory is missing: {{ item.item }}"
+      loop: "{{ foodloop_directory_stats.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Report server verification results
+      ansible.builtin.debug:
+        msg:
+          - "Remote ping: passed"
+          - "Docker service: {{ foodloop_docker_service.stdout }}"
+          - "{{ foodloop_docker_version.stdout }}"
+          - "{{ foodloop_compose_version.stdout }}"
+          - "Docker daemon: {{ foodloop_docker_daemon_version }}"
+          - "All four FoodLoop deployment directories exist."

@@ -1,0 +1,5 @@
+---
+foodloop_ssh_key_path: "{{ lookup('env', 'FOODLOOP_SSH_KEY') | default(lookup('env', 'HOME') ~ '/.ssh/foodloop-key.pem', true) }}"
+ansible_ssh_private_key_file: "{{ foodloop_ssh_key_path }}"
+
+common_upgrade_all_packages: false

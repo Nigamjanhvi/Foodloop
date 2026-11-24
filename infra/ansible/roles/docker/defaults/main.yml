@@ -1,0 +1,16 @@
+---
+docker_engine_package: docker
+docker_service_name: docker
+docker_compose_version: "5.8.0"
+docker_compose_plugin_directory: /usr/local/lib/docker/cli-plugins
+docker_compose_plugin_path: /usr/local/lib/docker/cli-plugins/docker-compose
+docker_deployment_user: ec2-user
+docker_deployment_group: docker
+docker_deployment_directories:
+  - /opt/foodloop
+  - /opt/foodloop/config
+  - /opt/foodloop/backups
+  - /opt/foodloop/logs
+docker_compose_release_architectures:
+  x86_64: x86_64
+  aarch64: aarch64

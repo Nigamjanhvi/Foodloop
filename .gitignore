@@ -7,6 +7,14 @@ coverage/
 .terraform/
 *.tfstate
 *.tfstate.*
+*.tfplan
+terraform.tfvars
+crash.log
+crash.*.log
 *.pem
 *.log
 *.tsbuildinfo
+infra/ansible/inventory.ini
+infra/ansible/*.retry
+infra/ansible/.vault_pass
+terraform.exe

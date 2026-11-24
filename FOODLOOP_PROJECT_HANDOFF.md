@@ -1,7 +1,8 @@
 ﻿# FoodLoop — Project Implementation and Operations Guide
 
 **Project:** FoodLoop community surplus food rescue platform  
-**Snapshot date:** 21 November 2026  
+**Snapshot date:** 24 November 2026
+
 **Repository type:** TypeScript monorepo with React frontend, Express API, PostgreSQL database, and an optional independent email worker.
 
 This document describes the implementation present in this repository. It does not claim that unimplemented DevOps, cloud, or production deployment work is complete. Do not put real secrets in this document or in `.env.example`.
@@ -14,15 +15,15 @@ Food safety information in a listing is supplied by the donor. FoodLoop records 
 
 ## 2. Technology and repository layout
 
-| Area | Implementation |
-|---|---|
-| Frontend | React 19, TypeScript, Vite, React Router, Axios, Lucide icons, Recharts |
-| API | Node.js, TypeScript, Express 5 |
-| Persistence | PostgreSQL 16, SQL migrations, `pg` connection pool |
-| Authentication | bcrypt password hashes, signed JWT bearer tokens, role middleware |
-| Validation | Zod request schemas on the API; frontend form validation and API errors |
-| Email | Nodemailer in a separate worker process |
-| Live updates | Authenticated Server-Sent Events (SSE), backed by PostgreSQL event records |
+| Area                | Implementation                                                               |
+| ------------------- | ---------------------------------------------------------------------------- |
+| Frontend            | React 19, TypeScript, Vite, React Router, Axios, Lucide icons, Recharts      |
+| API                 | Node.js, TypeScript, Express 5                                               |
+| Persistence         | PostgreSQL 16, SQL migrations, `pg` connection pool                          |
+| Authentication      | bcrypt password hashes, signed JWT bearer tokens, role middleware            |
+| Validation          | Zod request schemas on the API; frontend form validation and API errors      |
+| Email               | Nodemailer in a separate worker process                                      |
+| Live updates        | Authenticated Server-Sent Events (SSE), backed by PostgreSQL event records   |
 | Local orchestration | Docker Compose for frontend, backend, worker, and PostgreSQL; npm workspaces |
 
 ```text
@@ -47,6 +48,7 @@ Foodloop/
 ├── docker-compose.yml        # Four local services and persistent PostgreSQL volume
 ├── .dockerignore             # Excludes secrets, dependencies, and generated files
 ├── .env.example              # Safe configuration template; no live credentials
+├── infra/terraform/           # Phase 7 AWS network, IAM, ECR, EC2 infrastructure
 └── FOODLOOP_PROJECT_HANDOFF.md
 ```
 
@@ -113,6 +115,54 @@ Foodloop/
 - All app containers use restart policies and run as the unprivileged Node user where practical. `.dockerignore` prevents `.env`, credentials, dependency trees, build output, and local state from entering image build context.
 - Docker Compose is for local/academic operation. It is not an AWS deployment or a production hosting claim.
 
+### Phase status
+
+Phases 1–6 (application foundation, authentication, food donation and reservations, volunteer pickup/delivery verification, notifications and impact analytics, and Docker Compose) are completed. Phase 7 (Terraform infrastructure) and Phase 8 (Ansible host configuration) are completed as described below. Phases 9–12 remain pending.
+
+### Phase 7 — Terraform AWS infrastructure
+
+- `infra/terraform/` describes one VPC, a public subnet and route, Internet Gateway, SSH-restricted security group, EC2 IAM role/profile, two encrypted immutable ECR repositories, and one Amazon Linux 2023 EC2 instance with an encrypted gp3 root disk and IMDSv2 required.
+- Terraform uses the shared AWS CLI profile `foodloop-terraform`; no credentials or key material are stored in Terraform configuration. The instance role is limited to image pulls from the FoodLoop frontend/backend ECR repositories.
+- `terraform.tfvars.example` has safe defaults and a documentation-only `/32` administrator CIDR placeholder. The real local `terraform.tfvars`, state, plan files, and `.terraform` directory are ignored; `.terraform.lock.hcl` remains eligible for version control.
+- Terraform uses local state for this learning deployment. The existing local Docker Compose files and application code were not modified for Phase 7.
+- `terraform fmt -recursive`, `terraform init`, and `terraform validate` completed successfully; `.terraform.lock.hcl` locks AWS provider v6.73.0. The user confirms Phase 7 infrastructure provisioning is complete, including the SSH rule update. This documentation update did not run `terraform apply`/`destroy` or independently refresh AWS state; do not treat this note as a current drift check.
+
+### Phase 8 — Ansible server configuration (completed)
+
+- `infra/ansible/` contains project configuration, an example inventory, reusable common and Docker roles, `site.yml`, `verify.yml`, a daemon JSON template, and operator documentation.
+- The common role asserts Amazon Linux 2023 x86_64 and installs required host utilities with DNF; full package upgrades are configurable and disabled by default.
+- The Docker role installs the Amazon Linux `docker` package, enables the service, configures bounded JSON log rotation, adds `ec2-user` to the Docker group, installs pinned Compose V2 after official checksum verification, and creates restrictive `/opt/foodloop` directories.
+- Inventory uses the user-supplied host address and resolves the SSH key from `FOODLOOP_SSH_KEY` or `$HOME/.ssh/foodloop-key.pem`. Local inventory, retry output, and `.vault_pass` are ignored.
+- The user confirms the Ansible configuration and verification steps completed successfully. Docker daemon access was resolved by opening a fresh SSH session after adding the deployment user to the Docker group. No task counts, terminal output, or timestamps are asserted here because they were not supplied.
+- Local syntax checks for both playbooks and the inventory graph also passed from the WSL virtual environment. On the Windows-mounted WSL filesystem, validation explicitly selected `ANSIBLE_CONFIG` because Ansible otherwise ignores a config discovered in a world-writable mount.
+- Phase 8 configures the host only. It does not deploy FoodLoop containers, production secrets, or application data.
+
+### Phase 9 — FoodLoop production deployment on EC2 (pending / next)
+
+- [ ] Inspect production configuration and required environment variables; keep all secret values out of Git and documentation.
+- [ ] Prepare a production Docker Compose configuration without replacing the existing local Compose setup.
+- [ ] Build frontend and backend images for the EC2 architecture (`linux/amd64`). The backend image is also used by the notification worker.
+- [ ] Authenticate to AWS ECR and push the images to `foodloop-frontend` and `foodloop-backend`.
+- [ ] Configure production environment variables securely on EC2.
+- [ ] Pull the images and start the application containers.
+- [ ] Verify the frontend, backend health endpoint, worker, database connectivity, and persistent database storage.
+- [ ] Verify PostgreSQL is not publicly exposed.
+- [ ] Perform application smoke tests and capture genuine deployment evidence.
+
+No Phase 9 deployment or evidence is claimed complete.
+
+### Phase 10 — GitHub Actions CI/CD (pending)
+
+Automate the agreed build/test/security-scan/image-push/deployment workflow only after Phase 9 is working manually. Do not store AWS credentials or application secrets in workflow files.
+
+### Phase 11 — Nagios monitoring (pending)
+
+Add and verify the planned Nagios monitoring and alerting after the deployed services and health checks are established.
+
+### Phase 12 — Integration testing, evidence, and final report (pending)
+
+Run end-to-end integration checks, capture real execution evidence, document results and remaining limitations, and prepare the final project/viva report. Do not fabricate deployment or monitoring results.
+
 ## 4. Roles and application workflows
 
 ### Donor
@@ -153,43 +203,43 @@ Foodloop/
 
 All role dashboards require a valid login and enforce the matching role. `/dashboard` redirects the user to the route for their stored role.
 
-| Path | Role | Screen/workflow |
-|---|---|---|
-| `/` | Public | Landing page |
-| `/login` | Public | Email/password login |
-| `/register` | Public | Donor, NGO, or volunteer registration |
-| `/dashboard/donor` | Donor | Donor overview |
-| `/dashboard/donor/donations` | Donor | Donation listings |
-| `/dashboard/donor/donations/new` | Donor | Create donation |
-| `/dashboard/donor/donations/:id` | Donor | Donation detail and management |
-| `/dashboard/donor/reservations` | Donor | Incoming reservation requests |
-| `/dashboard/donor/reservations/:id` | Donor | Reservation, assignment, and pickup/delivery status |
-| `/dashboard/donor/history` | Donor | Donation history |
-| `/dashboard/donor/notifications` | Donor | Notifications |
-| `/dashboard/ngo` | NGO | Recipient overview |
-| `/dashboard/ngo/available` | NGO | Browse eligible food |
-| `/dashboard/ngo/available/:id` | NGO | Donation detail and request flow |
-| `/dashboard/ngo/reservations` | NGO | Reservations and history |
-| `/dashboard/ngo/reservations/:id` | NGO | Reservation and volunteer assistance |
-| `/dashboard/ngo/notifications` | NGO | Notifications |
-| `/dashboard/volunteer` | Volunteer | Volunteer overview |
-| `/dashboard/volunteer/profile` | Volunteer | Location and availability |
-| `/dashboard/volunteer/available` | Volunteer | Available assignments |
-| `/dashboard/volunteer/tasks` | Volunteer | Active assignments |
-| `/dashboard/volunteer/tasks/:id` | Volunteer | Assignment detail and OTP verification |
-| `/dashboard/volunteer/completed` | Volunteer | Completed work |
-| `/dashboard/volunteer/history` | Volunteer | Task history |
-| `/dashboard/volunteer/notifications` | Volunteer | Notifications |
-| `/dashboard/admin` | Admin | Admin overview |
-| `/dashboard/admin/organizations` | Admin | Organization review queue |
-| `/dashboard/admin/users` (also role filters) | Admin | User management/listing |
-| `/dashboard/admin/donations` | Admin | Donation inspection |
-| `/dashboard/admin/reservations` | Admin | Reservation inspection |
-| `/dashboard/admin/activity` | Admin | Admin-scoped notifications/activity |
-| `/dashboard/admin/notifications` | Admin | Email queue/worker monitoring |
-| `/dashboard/admin/analytics` | Admin | Impact analytics |
-| `/dashboard/admin/trust` | Admin | Access/trust page |
-| `/dashboard/admin/tasks`, `/devops`, `/settings` | Admin | Explicit placeholders; these full workflows are not implemented |
+| Path                                             | Role      | Screen/workflow                                                 |
+| ------------------------------------------------ | --------- | --------------------------------------------------------------- |
+| `/`                                              | Public    | Landing page                                                    |
+| `/login`                                         | Public    | Email/password login                                            |
+| `/register`                                      | Public    | Donor, NGO, or volunteer registration                           |
+| `/dashboard/donor`                               | Donor     | Donor overview                                                  |
+| `/dashboard/donor/donations`                     | Donor     | Donation listings                                               |
+| `/dashboard/donor/donations/new`                 | Donor     | Create donation                                                 |
+| `/dashboard/donor/donations/:id`                 | Donor     | Donation detail and management                                  |
+| `/dashboard/donor/reservations`                  | Donor     | Incoming reservation requests                                   |
+| `/dashboard/donor/reservations/:id`              | Donor     | Reservation, assignment, and pickup/delivery status             |
+| `/dashboard/donor/history`                       | Donor     | Donation history                                                |
+| `/dashboard/donor/notifications`                 | Donor     | Notifications                                                   |
+| `/dashboard/ngo`                                 | NGO       | Recipient overview                                              |
+| `/dashboard/ngo/available`                       | NGO       | Browse eligible food                                            |
+| `/dashboard/ngo/available/:id`                   | NGO       | Donation detail and request flow                                |
+| `/dashboard/ngo/reservations`                    | NGO       | Reservations and history                                        |
+| `/dashboard/ngo/reservations/:id`                | NGO       | Reservation and volunteer assistance                            |
+| `/dashboard/ngo/notifications`                   | NGO       | Notifications                                                   |
+| `/dashboard/volunteer`                           | Volunteer | Volunteer overview                                              |
+| `/dashboard/volunteer/profile`                   | Volunteer | Location and availability                                       |
+| `/dashboard/volunteer/available`                 | Volunteer | Available assignments                                           |
+| `/dashboard/volunteer/tasks`                     | Volunteer | Active assignments                                              |
+| `/dashboard/volunteer/tasks/:id`                 | Volunteer | Assignment detail and OTP verification                          |
+| `/dashboard/volunteer/completed`                 | Volunteer | Completed work                                                  |
+| `/dashboard/volunteer/history`                   | Volunteer | Task history                                                    |
+| `/dashboard/volunteer/notifications`             | Volunteer | Notifications                                                   |
+| `/dashboard/admin`                               | Admin     | Admin overview                                                  |
+| `/dashboard/admin/organizations`                 | Admin     | Organization review queue                                       |
+| `/dashboard/admin/users` (also role filters)     | Admin     | User management/listing                                         |
+| `/dashboard/admin/donations`                     | Admin     | Donation inspection                                             |
+| `/dashboard/admin/reservations`                  | Admin     | Reservation inspection                                          |
+| `/dashboard/admin/activity`                      | Admin     | Admin-scoped notifications/activity                             |
+| `/dashboard/admin/notifications`                 | Admin     | Email queue/worker monitoring                                   |
+| `/dashboard/admin/analytics`                     | Admin     | Impact analytics                                                |
+| `/dashboard/admin/trust`                         | Admin     | Access/trust page                                               |
+| `/dashboard/admin/tasks`, `/devops`, `/settings` | Admin     | Explicit placeholders; these full workflows are not implemented |
 
 Unknown routes display a 404 page. Placeholder pages explicitly say that planned information is not fabricated.
 
@@ -199,122 +249,122 @@ API base path is `/api/v1` unless shown otherwise. Successful API responses use 
 
 ### Health and identity
 
-| Method | Path | Access | Purpose |
-|---|---|---|---|
-| GET | `/api/health` | Public | API and PostgreSQL health check |
-| GET | `/api/v1` | Public | API identity/version |
-| POST | `/api/v1/auth/register` | Public, rate-limited | Register donor/NGO/volunteer |
-| POST | `/api/v1/auth/login` | Public, rate-limited | Email/password login |
-| POST | `/api/v1/auth/enroll-phone` | Public, rate-limited; requires current password | Add phone to legacy account |
-| GET | `/api/v1/auth/me` | Authenticated | Return authenticated identity |
-| POST | `/api/v1/organizations` | Donor/NGO | Add an organization |
-| GET | `/api/v1/organizations/me` | Donor/NGO | Current user’s organization/service areas |
+| Method | Path                        | Access                                          | Purpose                                   |
+| ------ | --------------------------- | ----------------------------------------------- | ----------------------------------------- |
+| GET    | `/api/health`               | Public                                          | API and PostgreSQL health check           |
+| GET    | `/api/v1`                   | Public                                          | API identity/version                      |
+| POST   | `/api/v1/auth/register`     | Public, rate-limited                            | Register donor/NGO/volunteer              |
+| POST   | `/api/v1/auth/login`        | Public, rate-limited                            | Email/password login                      |
+| POST   | `/api/v1/auth/enroll-phone` | Public, rate-limited; requires current password | Add phone to legacy account               |
+| GET    | `/api/v1/auth/me`           | Authenticated                                   | Return authenticated identity             |
+| POST   | `/api/v1/organizations`     | Donor/NGO                                       | Add an organization                       |
+| GET    | `/api/v1/organizations/me`  | Donor/NGO                                       | Current user’s organization/service areas |
 
 Registration password policy is at least 12 characters, including uppercase, lowercase, and a number. Login accepts at least 6 characters for legacy compatibility. Public registration does not accept the admin role.
 
 ### Administration
 
-| Method | Path | Access | Purpose |
-|---|---|---|---|
-| GET | `/api/v1/admin/overview` | Admin | Counts and recent users/reviews |
-| GET | `/api/v1/admin/users` | Admin | Paginated/searchable user list |
-| GET | `/api/v1/admin/organizations` | Admin | Paginated organization review list and filters |
-| PATCH | `/api/v1/admin/organizations/:id/verification` | Admin | Verify/reject and record review metadata |
-| GET | `/api/v1/admin/donations` | Admin | Inspect/filter donation records |
-| GET | `/api/v1/admin/reservations` | Admin | Inspect/filter reservation records |
+| Method | Path                                           | Access | Purpose                                        |
+| ------ | ---------------------------------------------- | ------ | ---------------------------------------------- |
+| GET    | `/api/v1/admin/overview`                       | Admin  | Counts and recent users/reviews                |
+| GET    | `/api/v1/admin/users`                          | Admin  | Paginated/searchable user list                 |
+| GET    | `/api/v1/admin/organizations`                  | Admin  | Paginated organization review list and filters |
+| PATCH  | `/api/v1/admin/organizations/:id/verification` | Admin  | Verify/reject and record review metadata       |
+| GET    | `/api/v1/admin/donations`                      | Admin  | Inspect/filter donation records                |
+| GET    | `/api/v1/admin/reservations`                   | Admin  | Inspect/filter reservation records             |
 
 ### Donations and reservations
 
-| Method | Path | Access | Purpose |
-|---|---|---|---|
-| POST | `/api/v1/donations` | Verified donor | Publish donation |
-| GET | `/api/v1/donations/mine` | Donor | List own donations |
-| GET | `/api/v1/donations/available` | NGO | Browse eligible local donations |
-| GET | `/api/v1/donations/:id` | Donor/NGO/Admin | Authorized donation detail |
-| PATCH | `/api/v1/donations/:id` | Owner donor | Edit a listing |
-| POST | `/api/v1/donations/:id/cancel` | Owner donor | Cancel a listing |
-| POST | `/api/v1/donations/:id/reservations` | Verified NGO | Request a quantity |
-| GET | `/api/v1/reservations/mine` | NGO | List own reservations |
-| GET | `/api/v1/reservations/received` | Donor | List requests received by donor |
-| GET | `/api/v1/reservations/:id` | Authorized party | Reservation detail |
-| PATCH | `/api/v1/reservations/:id/accept` | Donor | Accept request |
-| PATCH | `/api/v1/reservations/:id/reject` | Donor | Reject request |
-| POST | `/api/v1/reservations/:id/cancel` | NGO | Cancel own reservation |
+| Method | Path                                 | Access           | Purpose                         |
+| ------ | ------------------------------------ | ---------------- | ------------------------------- |
+| POST   | `/api/v1/donations`                  | Verified donor   | Publish donation                |
+| GET    | `/api/v1/donations/mine`             | Donor            | List own donations              |
+| GET    | `/api/v1/donations/available`        | NGO              | Browse eligible local donations |
+| GET    | `/api/v1/donations/:id`              | Donor/NGO/Admin  | Authorized donation detail      |
+| PATCH  | `/api/v1/donations/:id`              | Owner donor      | Edit a listing                  |
+| POST   | `/api/v1/donations/:id/cancel`       | Owner donor      | Cancel a listing                |
+| POST   | `/api/v1/donations/:id/reservations` | Verified NGO     | Request a quantity              |
+| GET    | `/api/v1/reservations/mine`          | NGO              | List own reservations           |
+| GET    | `/api/v1/reservations/received`      | Donor            | List requests received by donor |
+| GET    | `/api/v1/reservations/:id`           | Authorized party | Reservation detail              |
+| PATCH  | `/api/v1/reservations/:id/accept`    | Donor            | Accept request                  |
+| PATCH  | `/api/v1/reservations/:id/reject`    | Donor            | Reject request                  |
+| POST   | `/api/v1/reservations/:id/cancel`    | NGO              | Cancel own reservation          |
 
 List routes accept pagination and relevant filters such as status, search, category, and location. Request schemas enforce bounded page sizes and field values.
 
 ### Volunteers, assignments, and OTPs
 
-| Method | Path | Access | Purpose |
-|---|---|---|---|
-| GET | `/api/v1/volunteers/me` | Volunteer | View profile |
-| PATCH | `/api/v1/volunteers/me` | Volunteer | Update location/availability |
-| POST | `/api/v1/reservations/:id/assignments` | NGO | Request assistance on accepted reservation |
-| GET | `/api/v1/reservations/:id/assignments` | Donor/NGO party | View assignment state |
-| GET | `/api/v1/volunteers/assignments/available` | Volunteer | Browse eligible offers |
-| GET | `/api/v1/volunteers/assignments/mine` | Volunteer | View assignments/history |
-| GET | `/api/v1/assignments/:id` | Authorized party | Assignment details |
-| POST | `/api/v1/assignments/:id/accept` | Eligible volunteer | Accept offer |
-| POST | `/api/v1/assignments/:id/reject` | Eligible volunteer | Decline offer |
-| POST | `/api/v1/assignments/:id/cancel` | Authorized workflow party | Cancel assignment |
-| POST | `/api/v1/assignments/:id/pickup-otp/dev-code` | Donor; development only | Retrieve development code |
-| POST | `/api/v1/assignments/:id/delivery-otp/dev-code` | NGO; development only | Retrieve development code |
-| POST | `/api/v1/assignments/:id/pickup-otp/issue` | Donor | Queue pickup OTP email |
-| POST | `/api/v1/assignments/:id/delivery-otp/issue` | NGO | Queue delivery OTP email |
-| POST | `/api/v1/assignments/:id/pickup-otp/verify` | Assigned volunteer | Verify pickup code |
-| POST | `/api/v1/assignments/:id/delivery-otp/verify` | Assigned volunteer | Verify delivery code |
+| Method | Path                                            | Access                    | Purpose                                    |
+| ------ | ----------------------------------------------- | ------------------------- | ------------------------------------------ |
+| GET    | `/api/v1/volunteers/me`                         | Volunteer                 | View profile                               |
+| PATCH  | `/api/v1/volunteers/me`                         | Volunteer                 | Update location/availability               |
+| POST   | `/api/v1/reservations/:id/assignments`          | NGO                       | Request assistance on accepted reservation |
+| GET    | `/api/v1/reservations/:id/assignments`          | Donor/NGO party           | View assignment state                      |
+| GET    | `/api/v1/volunteers/assignments/available`      | Volunteer                 | Browse eligible offers                     |
+| GET    | `/api/v1/volunteers/assignments/mine`           | Volunteer                 | View assignments/history                   |
+| GET    | `/api/v1/assignments/:id`                       | Authorized party          | Assignment details                         |
+| POST   | `/api/v1/assignments/:id/accept`                | Eligible volunteer        | Accept offer                               |
+| POST   | `/api/v1/assignments/:id/reject`                | Eligible volunteer        | Decline offer                              |
+| POST   | `/api/v1/assignments/:id/cancel`                | Authorized workflow party | Cancel assignment                          |
+| POST   | `/api/v1/assignments/:id/pickup-otp/dev-code`   | Donor; development only   | Retrieve development code                  |
+| POST   | `/api/v1/assignments/:id/delivery-otp/dev-code` | NGO; development only     | Retrieve development code                  |
+| POST   | `/api/v1/assignments/:id/pickup-otp/issue`      | Donor                     | Queue pickup OTP email                     |
+| POST   | `/api/v1/assignments/:id/delivery-otp/issue`    | NGO                       | Queue delivery OTP email                   |
+| POST   | `/api/v1/assignments/:id/pickup-otp/verify`     | Assigned volunteer        | Verify pickup code                         |
+| POST   | `/api/v1/assignments/:id/delivery-otp/verify`   | Assigned volunteer        | Verify delivery code                       |
 
 OTP issue/verification endpoints are rate-limited. Codes expire after the configured workflow expiry and have bounded verification attempts. Production email depends on both SMTP and the encryption key being configured.
 
 ### Notifications, SSE, analytics, and monitoring
 
-| Method | Path | Access | Purpose |
-|---|---|---|---|
-| GET | `/api/v1/notifications` | Authenticated user | Paginated own notification history; `unread=true/false` filter |
-| GET | `/api/v1/notifications/unread-count` | Authenticated user | Own unread count |
-| PATCH | `/api/v1/notifications/:id/read` | Owner only | Mark one notice read |
-| PATCH | `/api/v1/notifications/read-all` | Authenticated user | Mark own notices read |
-| GET | `/api/v1/events/stream` | Authenticated user | User-scoped SSE with optional `Last-Event-ID` header |
-| GET | `/api/v1/analytics/overview` | Admin | Platform impact/operations summary |
-| GET | `/api/v1/analytics/donations/monthly` | Admin | Recent monthly donations and unit-grouped quantities |
-| GET | `/api/v1/analytics/donations/locality` | Admin | Donation totals by locality and unit |
-| GET | `/api/v1/analytics/reservations` | Admin | Reservation counts by status |
-| GET | `/api/v1/analytics/delivery` | Admin | OTP-verified pickup/delivery completion rates |
-| GET | `/api/v1/admin/notifications/stats` | Admin | Queue counts, worker heartbeat, recent event aggregates |
-| GET | `/api/v1/admin/notifications` | Admin | Paginated/filterable queue records; no body or OTP exposure |
+| Method | Path                                   | Access             | Purpose                                                        |
+| ------ | -------------------------------------- | ------------------ | -------------------------------------------------------------- |
+| GET    | `/api/v1/notifications`                | Authenticated user | Paginated own notification history; `unread=true/false` filter |
+| GET    | `/api/v1/notifications/unread-count`   | Authenticated user | Own unread count                                               |
+| PATCH  | `/api/v1/notifications/:id/read`       | Owner only         | Mark one notice read                                           |
+| PATCH  | `/api/v1/notifications/read-all`       | Authenticated user | Mark own notices read                                          |
+| GET    | `/api/v1/events/stream`                | Authenticated user | User-scoped SSE with optional `Last-Event-ID` header           |
+| GET    | `/api/v1/analytics/overview`           | Admin              | Platform impact/operations summary                             |
+| GET    | `/api/v1/analytics/donations/monthly`  | Admin              | Recent monthly donations and unit-grouped quantities           |
+| GET    | `/api/v1/analytics/donations/locality` | Admin              | Donation totals by locality and unit                           |
+| GET    | `/api/v1/analytics/reservations`       | Admin              | Reservation counts by status                                   |
+| GET    | `/api/v1/analytics/delivery`           | Admin              | OTP-verified pickup/delivery completion rates                  |
+| GET    | `/api/v1/admin/notifications/stats`    | Admin              | Queue counts, worker heartbeat, recent event aggregates        |
+| GET    | `/api/v1/admin/notifications`          | Admin              | Paginated/filterable queue records; no body or OTP exposure    |
 
 ## 7. Database schema and migrations
 
 The migration runner processes numbered SQL files in order and records them in `schema_migrations`. Each unapplied migration runs in a transaction. Existing migration files should be treated as immutable after they have been applied; introduce a higher numbered migration for later changes.
 
-| Migration | Purpose |
-|---|---|
-| `001_initial.sql` | Core users, organizations, service areas, donations, reservations, volunteer profiles, assignments, notification queue, indexes |
-| `002_organization_verification.sql` | Reviewer, review timestamp, and note fields on organizations |
-| `003_required_phone_identity.sql` | E.164 phone identity and unique indexes while retaining legacy phone compatibility |
-| `004_donation_reservations_workflow.sql` | Donation storage/location workflow fields, quantity accounting, expanded statuses/categories/units, reservation metadata and indexes |
-| `005_volunteer_assignment_verification.sql` | Volunteer profile metadata, assignment states/OTP attempts and expiries, assignment rejection records, delivered quantity field |
-| `006_backfill_verified_deliveries.sql` | Reconciles legacy verified deliveries and backfills delivered quantities |
-| `007_notifications_events_worker.sql` | Extends email queue; creates in-app notifications, durable user events, worker state; adds business notification triggers |
-| `008_admin_business_events.sql` | Adds administrator business activity, assignment-decline events, and worker operational events |
+| Migration                                   | Purpose                                                                                                                              |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `001_initial.sql`                           | Core users, organizations, service areas, donations, reservations, volunteer profiles, assignments, notification queue, indexes      |
+| `002_organization_verification.sql`         | Reviewer, review timestamp, and note fields on organizations                                                                         |
+| `003_required_phone_identity.sql`           | E.164 phone identity and unique indexes while retaining legacy phone compatibility                                                   |
+| `004_donation_reservations_workflow.sql`    | Donation storage/location workflow fields, quantity accounting, expanded statuses/categories/units, reservation metadata and indexes |
+| `005_volunteer_assignment_verification.sql` | Volunteer profile metadata, assignment states/OTP attempts and expiries, assignment rejection records, delivered quantity field      |
+| `006_backfill_verified_deliveries.sql`      | Reconciles legacy verified deliveries and backfills delivered quantities                                                             |
+| `007_notifications_events_worker.sql`       | Extends email queue; creates in-app notifications, durable user events, worker state; adds business notification triggers            |
+| `008_admin_business_events.sql`             | Adds administrator business activity, assignment-decline events, and worker operational events                                       |
 
 Core tables:
 
-| Table | Contents and key relationships |
-|---|---|
-| `users` | UUID, unique email, bcrypt hash, role, full name, legacy and E.164 phone, active flag, timestamps |
-| `organizations` | Owner user, donor/recipient type, verification state, address/locality/pincode, reviewer, note, verification timestamp |
-| `service_areas` | Organization’s additional city/locality/pincode matching areas |
-| `donations` | Donor organization, food/category, total/reserved/remaining/delivered quantity, unit, preparation/storage, pickup location, deadline, status |
-| `reservations` | Donation, recipient organization, quantity, status, optional message/reason, timestamps |
-| `volunteer_profiles` | Volunteer’s city/locality/pincode and availability |
-| `reservation_assignments` | Reservation, assigned volunteer, state, offer/accept timestamps, hashed OTP values/expiry/attempt counts, verification timestamps |
-| `assignment_rejections` | Volunteer-specific rejection history for an assignment |
-| `notification_queue` | Recipient email, subject/body, event type, status/attempts/retry timestamps, optional encrypted payload, idempotency key |
-| `in_app_notifications` | Recipient, event type, safe title/message/metadata, resource pointer, read timestamp, idempotency key |
-| `user_events` | Durable recipient-scoped event stream and replay IDs for SSE |
-| `notification_worker_state` | Worker start/heartbeat/stop timestamps, last error and completed job count |
-| `schema_migrations` | Migration filename and applied timestamp |
+| Table                       | Contents and key relationships                                                                                                               |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`                     | UUID, unique email, bcrypt hash, role, full name, legacy and E.164 phone, active flag, timestamps                                            |
+| `organizations`             | Owner user, donor/recipient type, verification state, address/locality/pincode, reviewer, note, verification timestamp                       |
+| `service_areas`             | Organization’s additional city/locality/pincode matching areas                                                                               |
+| `donations`                 | Donor organization, food/category, total/reserved/remaining/delivered quantity, unit, preparation/storage, pickup location, deadline, status |
+| `reservations`              | Donation, recipient organization, quantity, status, optional message/reason, timestamps                                                      |
+| `volunteer_profiles`        | Volunteer’s city/locality/pincode and availability                                                                                           |
+| `reservation_assignments`   | Reservation, assigned volunteer, state, offer/accept timestamps, hashed OTP values/expiry/attempt counts, verification timestamps            |
+| `assignment_rejections`     | Volunteer-specific rejection history for an assignment                                                                                       |
+| `notification_queue`        | Recipient email, subject/body, event type, status/attempts/retry timestamps, optional encrypted payload, idempotency key                     |
+| `in_app_notifications`      | Recipient, event type, safe title/message/metadata, resource pointer, read timestamp, idempotency key                                        |
+| `user_events`               | Durable recipient-scoped event stream and replay IDs for SSE                                                                                 |
+| `notification_worker_state` | Worker start/heartbeat/stop timestamps, last error and completed job count                                                                   |
+| `schema_migrations`         | Migration filename and applied timestamp                                                                                                     |
 
 Important status families include organization `pending/verified/rejected`; donation `available/partially_reserved/fully_reserved/expired/cancelled` plus retained legacy workflow values; reservation `pending/accepted/rejected/cancelled/expired/picked_up/delivered` plus compatibility values; assignment `pending/offered/accepted/rejected/cancelled/picked_up/delivered`; notification job `pending/processing/sent/failed`.
 
@@ -451,8 +501,8 @@ Expected rollback tests deliberately trigger PostgreSQL check-constraint errors 
 
 ## 12. Current limitations and explicitly unimplemented work
 
-- There is no AWS deployment, Terraform infrastructure, Kubernetes/EKS setup, CI/CD pipeline, production hosting, or paid cloud resource configured by this application work.
-- There is no Puppet configuration. Ansible/GitHub Actions/Nagios infrastructure and workflows are not part of the implemented user-facing Phase 5 work; verify repository files before claiming them as available.
+- The user reports Phase 7 provisioning and Phase 8 host configuration/verification complete. AWS live drift has not been independently checked during this documentation update, and no Phase 9 application deployment evidence has been supplied.
+- Phases 9–12 remain pending as described above. Puppet is excluded from the roadmap.
 - Admin DevOps, task management, and platform settings screens are placeholders, not connected production controls.
 - Real SMTP inbox delivery was not verified during the Phase 6 container smoke check; the worker did start and pass its health check using the configured worker/database state.
 - No fake organization verification, monitoring state, demo user, or production deployment status is generated. Organization status, worker status, queue status, and analytics are drawn from persisted records.
@@ -476,5 +526,6 @@ Expected rollback tests deliberately trigger PostgreSQL check-constraint errors 
 - [Frontend Docker image](frontend/Dockerfile)
 - [Docker build context exclusions](.dockerignore)
 - [Safe environment template](.env.example)
+- [Phase 7 Terraform implementation and instructions](infra/terraform/README.md)
+- [Phase 8 Ansible host configuration and instructions](infra/ansible/README.md)
 - [Database migrations](database/migrations/)
-

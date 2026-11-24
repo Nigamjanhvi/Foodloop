@@ -1,0 +1,6 @@
+---
+common_upgrade_all_packages: false
+common_required_packages:
+  - ca-certificates
+  - curl-minimal
+  - python3

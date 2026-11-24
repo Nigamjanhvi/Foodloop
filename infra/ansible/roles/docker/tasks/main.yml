@@ -1,0 +1,100 @@
+---
+- name: Verify the host CPU architecture has an official Compose release
+  ansible.builtin.assert:
+    that:
+      - ansible_architecture in docker_compose_release_architectures
+    fail_msg: "No Docker Compose binary mapping is defined for {{ ansible_architecture }}."
+
+- name: Install Docker Engine from Amazon Linux 2023 DNF repositories
+  ansible.builtin.dnf:
+    name: "{{ docker_engine_package }}"
+    state: present
+
+- name: Ensure the Docker group exists
+  ansible.builtin.group:
+    name: "{{ docker_deployment_group }}"
+    state: present
+
+- name: Add the deployment user to the Docker group
+  ansible.builtin.user:
+    name: "{{ docker_deployment_user }}"
+    groups:
+      - "{{ docker_deployment_group }}"
+    append: true
+    state: present
+
+- name: Ensure the system-wide Docker CLI plugin directory exists
+  ansible.builtin.file:
+    path: "{{ docker_compose_plugin_directory }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Fetch the official Docker Compose release checksum
+  ansible.builtin.uri:
+    url: "https://github.com/docker/compose/releases/download/v{{ docker_compose_version }}/docker-compose-linux-{{ docker_compose_release_architectures[ansible_architecture] }}.sha256"
+    method: GET
+    return_content: true
+    status_code: 200
+  register: docker_compose_checksum_response
+  changed_when: false
+
+- name: Extract the official SHA-256 digest
+  ansible.builtin.set_fact:
+    docker_compose_sha256: "{{ docker_compose_checksum_response.content | regex_search('^[a-fA-F0-9]{64}') }}"
+
+- name: Refuse installation if the official checksum is unavailable or malformed
+  ansible.builtin.assert:
+    that:
+      - docker_compose_sha256 is string
+      - docker_compose_sha256 | length == 64
+    fail_msg: >-
+      Could not read a valid official SHA-256 checksum for Docker Compose
+      {{ docker_compose_version }} ({{ ansible_architecture }}); refusing to install.
+
+- name: Install the pinned Docker Compose V2 CLI plugin with checksum verification
+  ansible.builtin.get_url:
+    url: "https://github.com/docker/compose/releases/download/v{{ docker_compose_version }}/docker-compose-linux-{{ docker_compose_release_architectures[ansible_architecture] }}"
+    dest: "{{ docker_compose_plugin_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+    checksum: "sha256:{{ docker_compose_sha256 }}"
+
+- name: Configure Docker log rotation
+  ansible.builtin.template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "python3 -m json.tool %s"
+  notify: Restart Docker
+
+- name: Enable and start Docker at boot
+  ansible.builtin.systemd:
+    name: "{{ docker_service_name }}"
+    enabled: true
+    state: started
+
+- name: Apply a changed Docker daemon configuration before verification
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure FoodLoop deployment directories exist with restrictive ownership
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ docker_deployment_user }}"
+    group: "{{ docker_deployment_group }}"
+    mode: "0750"
+  loop: "{{ docker_deployment_directories }}"
+
+- name: Verify Docker Compose V2 is callable
+  become_user: "{{ docker_deployment_user }}"
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - version
+  changed_when: false

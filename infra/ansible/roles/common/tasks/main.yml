@@ -1,0 +1,23 @@
+---
+- name: Assert this role targets Amazon Linux 2023 x86_64
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == "Amazon"
+      - ansible_distribution_major_version == "2023"
+      - ansible_architecture == "x86_64"
+    fail_msg: >-
+      The FoodLoop common role supports Amazon Linux 2023 x86_64;
+      detected {{ ansible_distribution }} {{ ansible_distribution_version }}
+      on {{ ansible_architecture }}.
+
+- name: Optionally update installed packages when explicitly enabled
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+    update_cache: true
+  when: common_upgrade_all_packages | bool
+
+- name: Install required host utilities and Python
+  ansible.builtin.dnf:
+    name: "{{ common_required_packages }}"
+    state: present

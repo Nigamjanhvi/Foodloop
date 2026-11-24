@@ -10,8 +10,14 @@ FoodLoop is a community food rescue app connecting verified food donors, recipie
 - **Phase 4:** volunteer profiles and availability, assignment offers, acceptance/rejection, hashed pickup and delivery OTPs, attempt limits, delivery records.
 - **Phase 5:** transactional notification records, SMTP worker and retry queue, encrypted OTP email payloads, in-app notification center, authenticated replayable SSE, admin notification operations, PostgreSQL analytics.
 - **Phase 6:** Dockerfiles for frontend/backend, four-service Docker Compose stack, container networking, persistent PostgreSQL volume, application-managed migrations, and health checks.
+- **Phase 7:** Terraform configuration for a single EC2 host, VPC/public networking, restricted SSH, EC2 ECR-pull role, and frontend/backend ECR repositories. `terraform fmt`, `init`, and `validate` passed. The user reports provisioning is complete; AWS state was not independently queried here.
+- **Phase 8:** Ansible configured and verified the reported Amazon Linux 2023 EC2 host with Docker Engine, Docker Compose V2, Docker log rotation, Docker group access, and FoodLoop deployment directories. The user confirms the Docker group permission issue was resolved by opening a fresh SSH session.
+- **Phase 9:** Production deployment of the FoodLoop Compose application to EC2 — pending.
+- **Phase 10:** GitHub Actions CI/CD — pending.
+- **Phase 11:** Nagios monitoring — pending.
+- **Phase 12:** Integration testing, execution evidence, and final report — pending.
 
-Docker support is for local development and academic demonstration. The repository does not include an AWS/production deployment or paid cloud infrastructure. The web app remains usable if SSE is offline; data can still be fetched through its normal API routes.
+Docker Compose supports local development and academic demonstration. The user reports that AWS infrastructure and Phase 8 host configuration are complete. Production application deployment and its evidence remain pending. The web app remains usable if SSE is offline; data can still be fetched through its normal API routes.
 
 ## Architecture
 
@@ -140,4 +146,4 @@ Run `npm.cmd test` for existing auth, donation, assignment, and Phase 5 PostgreS
 - Live updates require a valid authenticated SSE connection and an available database. The UI shows connection state and falls back to normal API requests.
 - Production OTP email requires a configured encryption key and valid SMTP service. Phase 6 confirmed the worker container's health, but did not send a real message to an inbox.
 - SMTP has an unavoidable send/record crash window; retries may produce a duplicate email, though queue records themselves are idempotent.
-- No AWS deployment, cloud provisioning, Kubernetes, CI/CD pipeline, or external monitoring service is claimed as complete. Docker Compose is for the local four-container stack only.
+- The user reports Phase 7 infrastructure and Phase 8 Ansible configuration are complete; this session did not independently refresh AWS state. Phase 9 production deployment, Phase 10 CI/CD, Phase 11 monitoring, and Phase 12 integration evidence/report remain pending. Docker Compose continues to support the local four-container stack.

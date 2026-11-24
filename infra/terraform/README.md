@@ -1,8 +1,8 @@
 # FoodLoop AWS infrastructure (Phase 7)
 
-This directory defines the AWS infrastructure for a later FoodLoop deployment. Terraform provisions the network, security boundary, instance role, two ECR repositories, and one EC2 host. It does **not** install Docker, deploy the application, or configure the host; Ansible is planned for those tasks in Phases 8 and 9.
+This directory defines FoodLoop's AWS infrastructure: network, security boundary, instance role, two ECR repositories, and one EC2 host. Terraform does **not** install Docker, deploy the application, or configure the host; Ansible handles host configuration in Phase 8 and application deployment in Phase 9.
 
-No AWS resources have been created by preparing these files. `terraform apply` and `terraform destroy` are intentionally not run as part of this implementation.
+The user confirms that Phase 7 provisioning is complete and that the SSH inbound rule was updated to the current administrator IP. This documentation update does not run `terraform apply` or `terraform destroy`, and does not independently refresh AWS state.
 
 ## Architecture
 
@@ -60,7 +60,7 @@ $myIp = (Invoke-RestMethod -Uri "https://checkip.amazonaws.com").Trim()
 $adminCidr = "$myIp/32"
 ```
 
-Edit `infra/terraform/terraform.tfvars` and set `admin_cidr = "$adminCidr"` (for example, `210.89.61.42/32` only if that is still your current public IP). `terraform.tfvars` is ignored by Git. The example contains only a documentation-range placeholder and safe defaults.
+Edit `infra/terraform/terraform.tfvars` and set `admin_cidr` to the value of `$adminCidr`. Do not copy an old public IP from documentation. `terraform.tfvars` is ignored by Git. The example contains only a documentation-range placeholder and safe defaults.
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -96,8 +96,9 @@ Keep `.terraform.lock.hcl` in Git after `terraform init` so provider selections/
 - `terraform fmt -recursive`: completed.
 - `terraform init`: completed; selected and locked `hashicorp/aws` v6.73.0 in `.terraform.lock.hcl`.
 - `terraform validate`: passed.
-- `terraform plan`: not run. The local AWS CLI returned `The config profile (foodloop-terraform) could not be found` for the required read-only identity check. Configure that profile/credential-process bridge first, then verify it with `aws sts get-caller-identity --profile foodloop-terraform --region ap-south-1` before planning. The AWS profile configuration is outside this repository and was not modified.
-- `terraform apply` and `terraform destroy`: not run; no AWS resources were created or deleted.
+- Phase 7 provisioning: reported complete by the user; the Terraform state was not refreshed against AWS as part of this documentation update.
+- `terraform plan`: no current plan result is recorded here. Run it with the configured AWS profile to check for drift before any future infrastructure change.
+- `terraform apply` and `terraform destroy`: not run as part of this documentation update.
 
 ### Provisioning (manual, cost-incurring)
 
@@ -107,7 +108,7 @@ Review every planned action and estimated cost before running:
 terraform apply -var-file="terraform.tfvars"
 ```
 
-The apply command creates billable AWS resources. This project implementation did not run it. Terraform outputs provide IDs, addresses, ECR URLs, registry ID, and `ec2-user`; outputs do not include credentials or private keys. After a successful apply, capture the outputs for the later Ansible inventory, especially `ec2_public_ip`, `ec2_ssh_user`, and the local key path. Keep the private key out of Git and restrict its Windows file permissions.
+The apply command creates billable AWS resources. Review the plan and account state before running it. Terraform outputs provide IDs, addresses, ECR URLs, registry ID, and `ec2-user`; outputs do not include credentials or private keys. Refresh the current EC2 public IP for Ansible inventory after a stop/start. Keep the private key out of Git and restrict its Windows file permissions.
 
 ### Destroying resources
 
@@ -132,4 +133,4 @@ Review the destroy plan first. ECR repositories are configured with `force_delet
 
 ## Handoff to Ansible
 
-Phase 8 Ansible will configure the Linux host (including Docker). Phase 9 Ansible will deploy/update the existing Docker Compose application and handle deployment operations. Use Terraform's `ec2_public_ip` output as the host address and `ec2-user` as the SSH user; use the existing local `$HOME\.ssh\foodloop-key.pem` key. The current local Docker Compose files are not changed by these Terraform definitions.
+Phase 8 Ansible host configuration is complete per user confirmation. Phase 9 will deploy/update the existing Docker Compose application and handle deployment operations. Use the current EC2 address in the ignored Ansible inventory and `ec2-user` as the SSH user; use the existing local key without copying it into this repository. The current local Docker Compose files are not changed by these Terraform definitions.

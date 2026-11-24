@@ -1,0 +1,55 @@
+---
+- name: Prepare the FoodLoop EC2 host for Phase 9 deployment
+  hosts: foodloop_ec2
+  gather_facts: true
+  become: true
+
+  pre_tasks:
+    - name: Verify the target operating system and CPU architecture
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == "Amazon"
+          - ansible_distribution_major_version == "2023"
+          - ansible_architecture == "x86_64"
+        fail_msg: >-
+          FoodLoop host configuration supports Amazon Linux 2023 on x86_64;
+          detected {{ ansible_distribution }} {{ ansible_distribution_version }}
+          on {{ ansible_architecture }}.
+        success_msg: "Confirmed Amazon Linux 2023 on x86_64."
+
+  roles:
+    - common
+    - docker
+
+  tasks:
+    - name: Ensure Docker is enabled and running
+      ansible.builtin.systemd:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Verify Docker daemon access as the deployment user
+      become_user: ec2-user
+      ansible.builtin.command:
+        argv:
+          - docker
+          - info
+      changed_when: false
+
+    - name: Verify Docker Compose V2
+      become_user: ec2-user
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - version
+      register: foodloop_compose_version
+      changed_when: false
+
+    - name: Report successful FoodLoop host preparation
+      ansible.builtin.debug:
+        msg:
+          - "Amazon Linux 2023 host configuration completed."
+          - "Docker is enabled and running; Docker Compose V2 is available."
+          - "FoodLoop deployment directories are ready for Phase 9."
+          - "Application containers have not been deployed."
